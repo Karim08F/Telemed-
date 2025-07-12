@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kidney Dialysis Patient Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="dashboard-container">
+    <h2>Welcome, {{ patient_name }}!</h2>
+
+    <section class="log-section">
+      <h3>Log Today’s Status</h3>
+      <form method="POST" action="/log">
+        <label for="symptoms">Symptoms:</label>
+        <textarea id="symptoms" name="symptoms" rows="3" required></textarea>
+
+        <label for="medication">Medications Taken:</label>
+        <textarea id="medication" name="medication" rows="2" required></textarea>
+
+        <button type="submit">Submit Log</button>
+      </form>
+    </section>
+
+    <section class="ai-analysis">
+      <h3>Health Trend Analysis</h3>
+      <canvas id="trendChart"></canvas>
+      <p class="ai-message">{{ ai_message }}</p>
+    </section>
+
+    <section class="recommendations">
+      <h3>Nephrologist's Recommendation</h3>
+      <p>{{ doctor_advice }}</p>
+    </section>
+
+    <section class="appointment-section">
+      <a href="/book" class="btn">Book A Nephrologist</a>
+    </section>
+  </div>
+
+  <script>
+   const data = {
+  labels: ["Mon", "Tue", "Wed"],
+  datasets: [{
+    label: "Health",
+    data: [1, 2, 3],
+    backgroundColor: "blue",
+    borderWidth: 1,
+  }]
+};
+
+  </script>
+</body>
+</html>
+<style>
+  /* patient.css */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #f4f8fb;
+  color: #2e3a59;
+}
+
+.dashboard-container {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: white;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  border-radius: 12px;
+}
+
+h2, h3 {
+  color: #004080;
+}
+
+section {
+  margin-top: 2rem;
+}
+
+form textarea {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  resize: vertical;
+  font-size: 1rem;
+}
+
+button[type="submit"] {
+  margin-top: 1rem;
+  background-color: #6a5acd;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #5a4abb;
+}
+
+.btn {
+  display: inline-block;
+  margin-right: 1rem;
+  padding: 0.7rem 1.4rem;
+  background-color: #6a5acd;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.btn-alt {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.chart-container {
+  margin-top: 2rem;
+  background-color: #eef1f9;
+  padding: 1rem;
+  border-radius: 10px;
+}
+
+canvas {
+  width: 100% !important;
+  max-height: 300px;
+}
+
+</style>
