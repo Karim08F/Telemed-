@@ -38,20 +38,10 @@
 
       <a href="/auth/google" class="google-btn">
         <img src="https://image.similarpng.com/file/similarpng/very-thumbnail/2020/06/Logo-google-icon-PNG.png" alt="Google">
-        Sign in with Google
+        Link with Google
       </a>
 
-      <p class="footer-text">Don't have an account? <a href="/register">Sign up</a></p>
-
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <ul class="flashes">
-            {% for message in messages %}
-              <li>{{ message }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-      {% endwith %}
+      <p class="footer-text">Don't have an account? <a href="/register">Contact the support team</a></p>
     </div>
   </div>
 </body>
@@ -59,7 +49,6 @@
 
 <style>
   
-#login
 body {
   margin: 0;
   font-family: 'Segoe UI', sans-serif;

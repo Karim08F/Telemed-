@@ -1,5 +1,9 @@
 html, body {
   height: 100%;
+  margin: 0;
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #f7f9fc;
+  color: #2e3a59;
 }
 
 .page-wrapper {
@@ -10,12 +14,6 @@ html, body {
 
 main {
   flex: 1;
-}
-body {
-  margin: 0;
-  font-family: 'Segoe UI', sans-serif;
-  background-color: #f7f9fc;
-  color: #2e3a59;
 }
 
 .navbar {
@@ -117,16 +115,8 @@ nav a {
   background-color: #fff;
 }
 
-#DASH
 .trend-graph {
   margin-top: 2rem;
-  }
- 
-body {
-  margin: 0;
-  font-family: 'Segoe UI', sans-serif;
-  background-color: #f4f8fb;
-  color: #2e3a59;
 }
 
 .dashboard-container {
@@ -167,18 +157,6 @@ button[type="submit"] {
 
 button:hover {
   background-color: #5a4abb;
-}
-
-.btn {
-  display: inline-block;
-  margin-right: 1rem;
-  padding: 0.7rem 1.4rem;
-  background-color: #6a5acd;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  text-decoration: none;
-  font-weight: 500;
 }
 
 .btn-alt {
