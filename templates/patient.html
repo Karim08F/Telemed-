@@ -101,16 +101,26 @@
     </div>
 
     <div class="row g-4 mt-2">
-      <!-- Nephrologist's Recommendation -->
-      <div class="col-md-6">
-        <div class="card p-3">
-          <h5 class="mb-3">👨‍⚕️ Nephrologist's Recommendation</h5>
-          <div class="alert alert-success">
-            {{ doctor_advice }}
-          </div>
-          <small class="text-muted">Last updated: Today, 9:30 AM</small>
-        </div>
-      </div>
+     <!-- Nephrologist's Recommendations -->
+<div class="col-md-6">
+  <div class="card p-3">
+    <h5 class="mb-3">🩺 Nephrologist’s Recommendations</h5>
+    {% if recommendations %}
+      <ul class="list-group">
+        {% for rec in recommendations %}
+          <li class="list-group-item">
+            <strong>{{ rec.doctor_name }}</strong> 
+            <small class="text-muted">({{ rec.date }})</small><br>
+            {{ rec.advice }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No recommendations yet.</p>
+    {% endif %}
+  </div>
+</div>
+
 
       <!-- Last 5 Logs -->
       <div class="col-md-6">

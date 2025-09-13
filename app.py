@@ -1,17 +1,32 @@
-from flask import Flask, render_template, request, redirect, session, flash, url_for
+from flask import Flask, render_template, request, redirect, session, flash, url_for, jsonify
 import mysql.connector
 import os
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv 
+from dotenv import load_dotenv
 
 
-load_dotenv() 
+load_dotenv()
+
+# -------------------- DATABASE --------------------
+try:
+    conn = mysql.connector.connect(
+        host="localhost",            
+        port=3306,                   
+        user="root",                 
+        password="",                 
+        database="telemed_system"    
+    )
+    cursor = conn.cursor(dictionary=True)
+    print(" Connected to local MySQL successfully")
+except mysql.connector.Error as err:
+    print(" Error connecting to MySQL:", err)
+    exit()
 
 # -------------------- GEMINI CONFIG --------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    raise ValueError("❌ GEMINI_API_KEY is missing! Please add it to your .env file.")
+    raise ValueError(" GEMINI_API_KEY is missing! Please add it to your .env file.")
 
 genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -24,42 +39,23 @@ def analyze_patient_logs(logs_text: str):
         ),
     ]
 
-    config = types.GenerateContentConfig(
-        thinking_config=types.ThinkingConfig(thinking_budget=0),
-    )
-
     try:
         ai_message = ""
         for chunk in genai_client.models.generate_content_stream(
             model="gemini-2.5-flash-lite",
             contents=contents,
-            config=config,
         ):
             if chunk.text:
                 ai_message += chunk.text
         return ai_message.strip()
     except Exception as e:
-        if "429" in str(e) or "quota" in str(e).lower():
-            return "⚠️ Telemed AI is busy, please try again later."
-        return "⚠️ Telemed AI is busy, please try again later."
+        print(" Gemini error:", e)
+        return " Telemed AI is busy, please try again later."
 
 
+# -------------------- FLASK APP --------------------
 app = Flask(__name__)
-app.secret_key = '123'   
-
-
-#DATABASE
-try:
-    conn = mysql.connector.connect(
-        host='localhost',
-        user='root',
-        password='',
-        database='telemed_system'
-    )
-    cursor = conn.cursor(dictionary=True)
-except mysql.connector.Error as err:
-    print("❌ Error connecting to MySQL:", err)
-    exit()
+app.secret_key = '123'
 
 
 # -------------------- ROUTES --------------------
@@ -71,11 +67,20 @@ def home():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        role = request.form['role']
+        role = request.form.get('role')  # dropdown for patient/caregiver/doctor
         email = request.form['email']
         password = request.form['password']
 
-        # Patient or caregiver login
+        # ✅ First, check if Admin (no dropdown needed)
+        cursor.execute("SELECT * FROM admins WHERE email = %s AND password = %s", (email, password))
+        admin = cursor.fetchone()
+        if admin:
+            session['admin_id'] = admin['admin_id']
+
+            session['admin_name'] = admin['name']
+            return redirect('/admin/dashboard')
+
+        # ✅ Otherwise, check role from dropdown
         if role in ['patient', 'caregiver']:
             cursor.execute("SELECT * FROM patients WHERE email = %s AND password = %s", (email, password))
             user = cursor.fetchone()
@@ -84,19 +89,18 @@ def login():
                 session['patient_name'] = user['name']
                 session['is_caregiver'] = (role == 'caregiver')
 
-                # Auto-assign doctor if none is assigned
+                # Auto-assign a doctor if none
                 if not user.get("doctor_id"):
                     cursor.execute("SELECT doctor_id FROM doctors ORDER BY RAND() LIMIT 1")
                     doctor = cursor.fetchone()
                     if doctor:
-                        cursor.execute("""
-                            UPDATE patients SET doctor_id = %s WHERE patient_id = %s
-                        """, (doctor['doctor_id'], user['patient_id']))
+                        cursor.execute("UPDATE patients SET doctor_id = %s WHERE patient_id = %s",
+                                       (doctor['doctor_id'], user['patient_id']))
                         conn.commit()
 
                 return redirect('/patient')
             else:
-                flash('Invalid credentials for patient.')
+                flash('Invalid credentials for patient/caregiver.')
 
         elif role == 'doctor':
             cursor.execute("SELECT * FROM doctors WHERE email = %s AND password = %s", (email, password))
@@ -111,26 +115,21 @@ def login():
     return render_template('login.html')
 
 
+
 @app.route('/patient')
 def patient():
     if 'patient_id' not in session:
         return redirect('/login')
 
-    # Fetch last 5 logs
-    cursor.execute("""
-        SELECT date, symptoms, medication 
-        FROM health_logs 
-        WHERE patient_id = %s 
-        ORDER BY date DESC LIMIT 5
-    """, (session['patient_id'],))
+    cursor.execute("""SELECT date, symptoms, medication 
+                      FROM health_logs 
+                      WHERE patient_id = %s 
+                      ORDER BY date DESC LIMIT 5""", (session['patient_id'],))
     logs = cursor.fetchall()
 
-    history = "\n".join([
-        f"{log['date']}: {log['symptoms']} (med: {log['medication']})"
-        for log in logs
-    ]) if logs else "No logs available."
+    history = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})"
+                         for log in logs]) if logs else "No logs available."
 
-    # Gemini AI analysis
     prompt = f"""
     You are a nephrologist AI reviewing a dialysis patient's recent logs.
 
@@ -138,41 +137,41 @@ def patient():
     {history}
 
     Task:
-    1. Classify the patient’s overall condition as You're Improving, You'reStable, or You're Worsening.
+    1. Classify the patient’s overall condition as Improving, Stable, or Worsening.
     2. Give exactly one short medical suggestion (≤160 characters).
-    3. Respond in this exact format:
+    3. Respond in this format:
 
     Condition: <Improving/Stable/Worsening>
     Advice: <short suggestion>
     """
-
     ai_message = analyze_patient_logs(prompt)
 
-    # Trend graph logic
     trend_data = [7, 7, 7, 7, 7, 7, 7]
     if "improving" in ai_message.lower():
         trend_data = [6.5, 6.7, 7.0, 7.2, 7.5, 7.7, 8.0]
     elif "worsening" in ai_message.lower():
         trend_data = [8.0, 7.7, 7.5, 7.2, 7.0, 6.8, 6.5]
 
-    # Doctor advice
-    cursor.execute("""
-        SELECT advice 
-        FROM recommendations 
-        WHERE patient_id = %s 
-        ORDER BY date DESC LIMIT 1
-    """, (session['patient_id'],))
+    cursor.execute("SELECT advice FROM recommendations WHERE patient_id = %s ORDER BY date DESC LIMIT 1",
+                   (session['patient_id'],))
+    
     rec = cursor.fetchone()
+    cursor.execute("""
+        SELECT r.advice, r.date, d.name AS doctor_name 
+        FROM recommendations r
+        JOIN doctors d ON r.doctor_id = d.doctor_id
+        WHERE r.patient_id = %s 
+        ORDER BY r.date DESC LIMIT 5
+    """, (session['patient_id'],))
+    recommendations = cursor.fetchall()
     doctor_advice = rec['advice'] if rec else "No recent doctor advice."
 
-    return render_template(
-        'patient.html',
-        patient_name=session['patient_name'],
-        logs=logs,
-        ai_message=ai_message,
-        doctor_advice=doctor_advice,
-        trend_data=trend_data
-    )
+    return render_template('patient.html',
+                           patient_name=session['patient_name'],
+                           logs=logs,
+                           ai_message=ai_message,
+                           doctor_advice=doctor_advice,
+                           trend_data=trend_data)
 
 
 @app.route('/log', methods=['POST'])
@@ -183,12 +182,9 @@ def log_status():
     symptoms = request.form['symptoms']
     medication = request.form['medication']
 
-    cursor.execute("""
-        INSERT INTO health_logs (patient_id, symptoms, medication)
-        VALUES (%s, %s, %s)
-    """, (session['patient_id'], symptoms, medication))
+    cursor.execute("INSERT INTO health_logs (patient_id, symptoms, medication) VALUES (%s, %s, %s)",
+                   (session['patient_id'], symptoms, medication))
     conn.commit()
-
     flash("Health status logged successfully.")
     return redirect('/patient')
 
@@ -200,55 +196,62 @@ def doctor_dashboard():
 
     doctor_id = session['doctor_id']
 
-    # Patients assigned to doctor
-    cursor.execute("""
-        SELECT p.patient_id, p.name, p.email
-        FROM patients p
-        WHERE p.doctor_id = %s
-    """, (doctor_id,))
+    # Get patients assigned to this doctor
+    cursor.execute("SELECT p.patient_id, p.name, p.email FROM patients p WHERE p.doctor_id = %s", (doctor_id,))
     patients = cursor.fetchall()
 
-    patient_logs = {}
-    ai_summaries = {}
-
+    patient_logs, ai_summaries = {}, {}
     for p in patients:
-        cursor.execute("""
-            SELECT date, symptoms, medication 
-            FROM health_logs 
-            WHERE patient_id = %s 
-            ORDER BY date DESC LIMIT 5
-        """, (p['patient_id'],))
+        cursor.execute("""SELECT date, symptoms, medication 
+                          FROM health_logs 
+                          WHERE patient_id = %s 
+                          ORDER BY date DESC LIMIT 5""", (p['patient_id'],))
         logs = cursor.fetchall()
         patient_logs[p['patient_id']] = logs
 
+        # Call AI analyzer function (short summary for dashboard)
         if logs:
-            logs_text = "\n".join(
-                [f"{log['date']}: Symptoms={log['symptoms']}, Medication={log['medication']}" for log in logs]
+            logs_text = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})" for log in logs])
+            ai_summaries[p['patient_id']] = analyze_patient_logs(
+                f"Last 5 logs:\n{logs_text}\nSay in <160 characters if the patient is improving, stable, or worsening."
             )
-            prompt = f"""
-            Last 5 logs for CKD patient:\n{logs_text}\n
-            In <160 characters, say if the patient is improving, stable, or worsening.
-            """
-            ai_summaries[p['patient_id']] = analyze_patient_logs(prompt)
+        else:
+            ai_summaries[p['patient_id']] = "No logs available."
 
-    # Pending appointments
-    cursor.execute("""
-        SELECT a.id, a.date, p.name AS patient_name 
-        FROM appointments a
-        JOIN patients p ON a.patient_id = p.patient_id
-        WHERE a.doctor_id = %s AND a.status = 'pending'
-        ORDER BY a.date ASC
-    """, (doctor_id,))
+    # Fetch pending appointments
+    cursor.execute("""SELECT a.id, a.date, p.name AS patient_name 
+                      FROM appointments a
+                      JOIN patients p ON a.patient_id = p.patient_id
+                      WHERE a.doctor_id = %s AND a.status = 'pending'
+                      ORDER BY a.date ASC""", (doctor_id,))
     appointments = cursor.fetchall()
 
-    return render_template(
-        'doctor.html',
-        doctor_name=session['doctor_name'],
-        patients=patients,
-        patient_logs=patient_logs,
-        ai_summaries=ai_summaries,
-        appointments=appointments
-    )
+    return render_template('doctor.html',
+                           doctor_name=session['doctor_name'],
+                           patients=patients,
+                           patient_logs=patient_logs,
+                           ai_summaries=ai_summaries,
+                           appointments=appointments)
+
+
+@app.route("/ai_suggest/<int:patient_id>")
+def ai_suggest(patient_id):
+    """Return a longer AI suggestion for the doctor (via modal in doctor.html)."""
+    cursor.execute("""SELECT date, symptoms, medication 
+                      FROM health_logs 
+                      WHERE patient_id = %s 
+                      ORDER BY date DESC LIMIT 5""", (patient_id,))
+    logs = cursor.fetchall()
+
+    if logs:
+        logs_text = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})" for log in logs])
+        suggestion = analyze_patient_logs(
+            f"Recent logs:\n{logs_text}\nProvide clinical decision support suggestions in 3-4 sentences."
+        )
+    else:
+        suggestion = "No recent logs. Recommend scheduling a follow-up."
+
+    return jsonify({"suggestion": suggestion})
 
 
 @app.route("/recommend/<int:patient_id>", methods=["GET", "POST"])
@@ -258,27 +261,19 @@ def recommend(patient_id):
 
     if request.method == "POST":
         advice = request.form["advice"]
-
-        cursor.execute("""
-            INSERT INTO recommendations (patient_id, doctor_id, advice)
-            VALUES (%s, %s, %s)
-        """, (patient_id, session["doctor_id"], advice))
+        cursor.execute("INSERT INTO recommendations (patient_id, doctor_id, advice) VALUES (%s, %s, %s)",
+                       (patient_id, session["doctor_id"], advice))
         conn.commit()
-
         flash("Recommendation saved successfully!")
         return redirect("/doctor")
 
     cursor.execute("SELECT * FROM patients WHERE patient_id = %s", (patient_id,))
     patient = cursor.fetchone()
 
-    cursor.execute("""
-        SELECT * FROM health_logs 
-        WHERE patient_id = %s ORDER BY date DESC LIMIT 5
-    """, (patient_id,))
+    cursor.execute("SELECT * FROM health_logs WHERE patient_id = %s ORDER BY date DESC LIMIT 5", (patient_id,))
     logs = cursor.fetchall()
 
     return render_template("recomendation.html", patient=patient, logs=logs)
-
 
 
 @app.route("/book", methods=["GET", "POST"])
@@ -286,7 +281,6 @@ def book_appointment():
     if "patient_id" not in session:
         return redirect("/login")
 
-    # Get the patient's assigned doctor
     cursor.execute("SELECT doctor_id FROM patients WHERE patient_id = %s", (session["patient_id"],))
     assigned = cursor.fetchone()
     if not assigned or not assigned["doctor_id"]:
@@ -298,41 +292,25 @@ def book_appointment():
     if request.method == "POST":
         date = request.form["date"]
         time = request.form["time"]
-
-        cursor.execute("""
-            INSERT INTO appointments (patient_id, doctor_id, date, time, status)
-            VALUES (%s, %s, %s, %s, 'pending')
-        """, (session["patient_id"], doctor_id, date, time))
+        cursor.execute("INSERT INTO appointments (patient_id, doctor_id, date, time, status) VALUES (%s, %s, %s, %s, 'pending')",
+                       (session["patient_id"], doctor_id, date, time))
         conn.commit()
-
         flash("Appointment booked successfully with your assigned doctor!")
         return redirect("/patient")
 
-    # Get doctor details for display
     cursor.execute("SELECT name, specialization FROM doctors WHERE doctor_id = %s", (doctor_id,))
     doctor = cursor.fetchone()
-
     return render_template("book.html", doctor=doctor)
-
 
 
 @app.route("/contact")
 def contact():
-    cursor = conn.cursor(dictionary=True)
-
-    # Fetch doctors
     cursor.execute("SELECT doctor_id, name, specialization, phone, email FROM doctors")
     doctors = cursor.fetchall()
 
-    # Fetch nurses
     cursor.execute("SELECT nurse_id, name, specialization, phone, email FROM nurses")
     nurses = cursor.fetchall()
 
-    # (Optional) Fetch other care team members (e.g., nutritionists, counselors)
-    # cursor.execute("SELECT * FROM staff WHERE role='nutritionist'")
-    # nutritionists = cursor.fetchall()
-
-    cursor.close()
     return render_template("contact.html", doctors=doctors, nurses=nurses)
 
 
@@ -341,18 +319,12 @@ def message_care_team():
     if 'patient_id' not in session:
         return redirect('/login')
 
-    recipient_id = request.form['recipient_id']
-    subject = request.form['subject']
-    message = request.form['message']
-
-    cursor.execute("""
-        INSERT INTO messages (patient_id, recipient_id, subject, body)
-        VALUES (%s, %s, %s, %s)
-    """, (session['patient_id'], recipient_id, subject, message))
+    cursor.execute("INSERT INTO messages (patient_id, recipient_id, subject, body) VALUES (%s, %s, %s, %s)",
+                   (session['patient_id'], request.form['recipient_id'],
+                    request.form['subject'], request.form['message']))
     conn.commit()
     flash('Message sent securely to your care team.')
     return redirect('/contact')
-
 
 
 @app.route('/labs')
@@ -360,20 +332,125 @@ def labs_page():
     if 'patient_id' not in session:
         return redirect('/login')
 
-    cursor.execute("""
-        SELECT id, DATE_FORMAT(date, '%%Y-%%m-%%d') AS date, test_name, value, unit,
-               reference_range, status, clinician_notes
-        FROM lab_results
-        WHERE patient_id = %s
-        ORDER BY date DESC, id DESC
-    """, (session['patient_id'],))
+    cursor.execute("""SELECT id, DATE_FORMAT(date, '%%Y-%%m-%%d') AS date, test_name, value, unit,
+                      reference_range, status, clinician_notes
+                      FROM lab_results
+                      WHERE patient_id = %s
+                      ORDER BY date DESC, id DESC""", (session['patient_id'],))
     labs = cursor.fetchall() or []
 
-    # Build unique list of tests for the filter
     unique_tests = sorted({row['test_name'] for row in labs})
-
     return render_template('labs.html', labs=labs, unique_tests=unique_tests)
 
+
+
+
+
+
+
+
+
+# ---------- ADMIN ----------
+@app.route("/admin/dashboard")
+def admin_dashboard():
+    if "admin_id" not in session:
+        return redirect("/login")
+    return render_template("admin_dashboard.html", admin_name=session["admin_name"])
+
+
+# Manage Patients
+@app.route("/admin/patients")
+def manage_patients():
+    if "admin_id" not in session:
+        return redirect("/login")
+    cursor.execute("SELECT * FROM patients")
+    patients = cursor.fetchall()
+    return render_template("manage_patients.html", patients=patients)
+
+
+@app.route("/admin/patients/add", methods=["POST"])
+def add_patient():
+    if "admin_id" not in session:
+        return redirect("/login")
+    name = request.form["name"]
+    email = request.form["email"]
+    password = request.form["password"]
+    cursor.execute("INSERT INTO patients (name, email, password) VALUES (%s, %s, %s)", (name, email, password))
+    conn.commit()
+    return redirect(url_for("manage_patients"))
+
+
+@app.route("/admin/patients/delete/<int:id>", methods=["POST"])
+def delete_patient(id):
+    if "admin_id" not in session:
+        return redirect("/login")
+    cursor.execute("DELETE FROM patients WHERE patient_id = %s", (id,))
+    conn.commit()
+    return redirect(url_for("manage_patients"))
+
+
+# Manage Doctors
+@app.route("/admin/doctors")
+def manage_doctors():
+    if "admin_id" not in session:
+        return redirect("/login")
+    cursor.execute("SELECT * FROM doctors")
+    doctors = cursor.fetchall()
+    return render_template("manage_doctors.html", doctors=doctors)
+
+
+@app.route("/admin/doctors/add", methods=["POST"])
+def add_doctor():
+    if "admin_id" not in session:
+        return redirect("/login")
+    name = request.form["name"]
+    email = request.form["email"]
+    password = request.form["password"]
+    specialization = request.form["specialization"]
+    cursor.execute("INSERT INTO doctors (name, email, password, specialization) VALUES (%s, %s, %s, %s)",
+                   (name, email, password, specialization))
+    conn.commit()
+    return redirect(url_for("manage_doctors"))
+
+
+@app.route("/admin/doctors/delete/<int:id>", methods=["POST"])
+def delete_doctor(id):
+    if "admin_id" not in session:
+        return redirect("/login")
+    cursor.execute("DELETE FROM doctors WHERE doctor_id = %s", (id,))
+    conn.commit()
+    return redirect(url_for("manage_doctors"))
+
+
+# Manage Caregivers
+@app.route("/admin/caregivers")
+def manage_caregivers():
+    if "admin_id" not in session:
+        return redirect("/login")
+    cursor.execute("SELECT * FROM caregivers")
+    caregivers = cursor.fetchall()
+    return render_template("manage_caregivers.html", caregivers=caregivers)
+
+
+@app.route("/admin/caregivers/add", methods=["POST"])
+def add_caregiver():
+    if "admin_id" not in session:
+        return redirect("/login")
+    name = request.form["name"]
+    email = request.form["email"]
+    password = request.form["password"]
+    cursor.execute("INSERT INTO caregivers (name, email, password) VALUES (%s, %s, %s)", (name, email, password))
+    conn.commit()
+    return redirect(url_for("manage_caregivers"))
+
+
+@app.route("/admin/caregivers/delete/<int:id>", methods=["POST"])
+def delete_caregiver(id):
+    if "admin_id" not in session:
+        return redirect("/login")
+    cursor.execute("DELETE FROM caregivers WHERE caregiver_id = %s", (id,))
+    conn.commit()
+    return redirect(url_for("manage_caregivers"))
 
 
 
