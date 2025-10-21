@@ -102,6 +102,24 @@
         </div>
       {% endif %}
     </div>
+    <!-- Patient Profile -->
+<div class="card p-3 mb-4">
+  <h5 class="mb-3">Patient Information</h5>
+  {% if patient %}
+    <div class="row">
+      <div class="col-md-4"><strong>Name:</strong> {{ patient.name }}</div>
+      <div class="col-md-4"><strong>Age:</strong> {{ patient.age or 'N/A' }}</div>
+      <div class="col-md-4"><strong>Gender:</strong> {{ patient.gender or 'N/A' }}</div>
+      <div class="col-md-4"><strong>Blood Pressure:</strong> {{ patient.blood_pressure or 'N/A' }}</div>
+      <div class="col-md-4"><strong>Blood Sugar:</strong> {{ patient.blood_sugar or 'N/A' }}</div>
+      <div class="col-md-4"><strong>Weight:</strong> {{ patient.weight or 'N/A' }} kg</div>
+      <div class="col-md-4"><strong>Urine Output:</strong> {{ patient.urine_output or 'N/A' }}</div>
+    </div>
+  {% else %}
+    <p class="text-muted">No patient profile found.</p>
+  {% endif %}
+</div>
+
   </div>
 
   <script>

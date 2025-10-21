@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, flash, url_for, jsonify
 import mysql.connector
 import os
+import africastalking
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
@@ -23,7 +24,21 @@ except mysql.connector.Error as err:
     print(" Error connecting to MySQL:", err)
     exit()
 
-# -------------------- GEMINI CONFIG --------------------
+
+username = "sandbox"   
+api_key = "atsk_ff62bffca1190c7c11dfa010401b3fd68de662c2829e11245ac00996fa144347be477ab2"
+
+def send_sms(recipient, message):
+    africastalking.initialize(username, api_key)
+    sms = africastalking.SMS
+    try:
+        response = sms.send(message, [recipient])
+        print("SMS sent:", response)
+    except Exception as e:
+        print(f"Failed to send SMS: {str(e)}")
+
+
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError(" GEMINI_API_KEY is missing! Please add it to your .env file.")
@@ -53,12 +68,11 @@ def analyze_patient_logs(logs_text: str):
         return " Telemed AI is busy, please try again later."
 
 
-# -------------------- FLASK APP --------------------
+
 app = Flask(__name__)
 app.secret_key = '123'
 
 
-# -------------------- ROUTES --------------------
 @app.route('/')
 def home():
     return render_template('base.html')
@@ -67,11 +81,11 @@ def home():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        role = request.form.get('role')  # dropdown for patient/caregiver/doctor
+        role = request.form.get('role')  
         email = request.form['email']
         password = request.form['password']
 
-        # ✅ First, check if Admin (no dropdown needed)
+        
         cursor.execute("SELECT * FROM admins WHERE email = %s AND password = %s", (email, password))
         admin = cursor.fetchone()
         if admin:
@@ -80,7 +94,7 @@ def login():
             session['admin_name'] = admin['name']
             return redirect('/admin/dashboard')
 
-        # ✅ Otherwise, check role from dropdown
+    
         if role in ['patient', 'caregiver']:
             cursor.execute("SELECT * FROM patients WHERE email = %s AND password = %s", (email, password))
             user = cursor.fetchone()
@@ -121,15 +135,18 @@ def patient():
     if 'patient_id' not in session:
         return redirect('/login')
 
+    # Get last 5 logs (most recent first)
     cursor.execute("""SELECT date, symptoms, medication 
                       FROM health_logs 
                       WHERE patient_id = %s 
                       ORDER BY date DESC LIMIT 5""", (session['patient_id'],))
     logs = cursor.fetchall()
 
+    # Convert logs to readable history for AI
     history = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})"
                          for log in logs]) if logs else "No logs available."
 
+    # AI prompt
     prompt = f"""
     You are a nephrologist AI reviewing a dialysis patient's recent logs.
 
@@ -146,16 +163,27 @@ def patient():
     """
     ai_message = analyze_patient_logs(prompt)
 
-    trend_data = [7, 7, 7, 7, 7, 7, 7]
-    if "improving" in ai_message.lower():
-        trend_data = [6.5, 6.7, 7.0, 7.2, 7.5, 7.7, 8.0]
-    elif "worsening" in ai_message.lower():
-        trend_data = [8.0, 7.7, 7.5, 7.2, 7.0, 6.8, 6.5]
+    # --- Generate trend data dynamically from logs ---
+    trend_data = []
+    labels = []
 
+    if logs:
+        for log in reversed(logs):  # chronological order (oldest → newest)
+            labels.append(log['date'].strftime("%Y-%m-%d"))
+
+            # crude scoring: fewer symptoms = higher score
+            symptoms_text = log['symptoms'] or ""
+            score = max(1, 10 - min(len(symptoms_text.split()), 9))  
+            trend_data.append(score)
+    else:
+        trend_data = []
+        labels = []
+
+    # Doctor’s advice
     cursor.execute("SELECT advice FROM recommendations WHERE patient_id = %s ORDER BY date DESC LIMIT 1",
                    (session['patient_id'],))
-    
     rec = cursor.fetchone()
+
     cursor.execute("""
         SELECT r.advice, r.date, d.name AS doctor_name 
         FROM recommendations r
@@ -164,6 +192,7 @@ def patient():
         ORDER BY r.date DESC LIMIT 5
     """, (session['patient_id'],))
     recommendations = cursor.fetchall()
+
     doctor_advice = rec['advice'] if rec else "No recent doctor advice."
 
     return render_template('patient.html',
@@ -171,7 +200,9 @@ def patient():
                            logs=logs,
                            ai_message=ai_message,
                            doctor_advice=doctor_advice,
-                           trend_data=trend_data)
+                           trend_data=trend_data,
+                           labels=labels,
+                           recommendations=recommendations)
 
 
 @app.route('/log', methods=['POST'])
@@ -196,34 +227,53 @@ def doctor_dashboard():
 
     doctor_id = session['doctor_id']
 
-    # Get patients assigned to this doctor
+    # Fetch patients assigned to this doctor
     cursor.execute("SELECT p.patient_id, p.name, p.email FROM patients p WHERE p.doctor_id = %s", (doctor_id,))
     patients = cursor.fetchall()
 
     patient_logs, ai_summaries = {}, {}
+
     for p in patients:
-        cursor.execute("""SELECT date, symptoms, medication 
-                          FROM health_logs 
-                          WHERE patient_id = %s 
-                          ORDER BY date DESC LIMIT 5""", (p['patient_id'],))
+       
+        cursor.execute("""
+            SELECT date, symptoms, medication 
+            FROM health_logs 
+            WHERE patient_id = %s 
+            ORDER BY date DESC LIMIT 5
+        """, (p['patient_id'],))
         logs = cursor.fetchall()
         patient_logs[p['patient_id']] = logs
 
-        # Call AI analyzer function (short summary for dashboard)
         if logs:
+          
             logs_text = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})" for log in logs])
-            ai_summaries[p['patient_id']] = analyze_patient_logs(
-                f"Last 5 logs:\n{logs_text}\nSay in <160 characters if the patient is improving, stable, or worsening."
-            )
+
+            # Precise AI suggestion for doctor
+            prompt = f"""
+    ;;        You are a nephrologist AI reviewing a dialysis patient's recent logs.
+
+            Patient’s last 5 logs:
+            {logs_text}
+
+            Task:
+            
+            1. Provide a precise, actionable recommendation for the doctor in 2-3 sentences.
+            2. Respond in this format:
+             <precise recommendation>
+            """
+
+            ai_summaries[p['patient_id']] = analyze_patient_logs(prompt)
         else:
-            ai_summaries[p['patient_id']] = "No logs available."
+            ai_summaries[p['patient_id']] = "No recent logs. Recommend follow-up."
 
     # Fetch pending appointments
-    cursor.execute("""SELECT a.id, a.date, p.name AS patient_name 
-                      FROM appointments a
-                      JOIN patients p ON a.patient_id = p.patient_id
-                      WHERE a.doctor_id = %s AND a.status = 'pending'
-                      ORDER BY a.date ASC""", (doctor_id,))
+    cursor.execute("""
+        SELECT a.id, a.date, p.name AS patient_name 
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.patient_id
+        WHERE a.doctor_id = %s AND a.status = 'pending'
+        ORDER BY a.date ASC
+    """, (doctor_id,))
     appointments = cursor.fetchall()
 
     return render_template('doctor.html',
@@ -274,6 +324,113 @@ def recommend(patient_id):
     logs = cursor.fetchall()
 
     return render_template("recomendation.html", patient=patient, logs=logs)
+
+from flask import flash, redirect, url_for
+
+@app.route("/appointment/<int:appointment_id>/<action>", methods=["POST", "GET"])
+def update_appointment(appointment_id, action):
+    if "doctor_id" not in session:
+        return redirect("/login")
+
+    try:
+        # use a fresh cursor for each DB operation
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT patient_id FROM appointments WHERE id=%s", (appointment_id,))
+        appt = cur.fetchone()
+        cur.close()
+
+        if not appt:
+            flash("Appointment not found ❌", "danger")
+            return redirect(url_for("doctor_dashboard"))
+
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT phone, name FROM patients WHERE patient_id=%s", (appt["patient_id"],))
+        patient = cur.fetchone()
+        cur.close()
+
+        if not patient or not patient.get("phone"):
+            flash("Patient phone not found ❌", "danger")
+            return redirect(url_for("doctor_dashboard"))
+
+        if action not in ("accept", "reject"):
+            flash("Invalid action ❌", "warning")
+            return redirect(url_for("doctor_dashboard"))
+
+        new_status = "accepted" if action == "accept" else "rejected"
+        sms_message = f"Hello {patient.get('name','')}, your appointment has been {new_status.upper()} {'✅' if action=='accept' else '❌'}"
+
+      
+        cur = conn.cursor()
+        cur.execute("UPDATE appointments SET status=%s WHERE id=%s", (new_status, appointment_id))
+        conn.commit()
+        cur.close()
+
+
+        try:
+            send_sms(patient["phone"], sms_message)
+        except Exception as e:
+            app.logger.exception("SMS sending failed (but appointment already updated)")
+
+        flash(f"Appointment {new_status}. Patient notified (if SMS succeeded).", "success" if action=="accept" else "danger")
+
+        
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"message": f"Appointment {new_status}", "status": "ok"})
+
+        return redirect(url_for("doctor_dashboard"))
+
+    except Exception as e:
+        app.logger.exception("Error updating appointment")
+        flash("Error updating appointment. See server log for details.", "danger")
+        return redirect(url_for("doctor_dashboard"))
+
+
+@app.route("/appointments/accept/<int:app_id>")
+def accept_appointment(app_id):
+   
+    cursor.execute("UPDATE appointments SET status='accepted' WHERE id=%s", (app_id,))
+    conn.commit()
+
+    # Fetch patient info
+    cursor.execute("""
+        SELECT p.phone, p.name, a.date 
+        FROM appointments a 
+        JOIN patients p ON a.patient_id = p.patient_id 
+        WHERE a.id=%s
+    """, (app_id,))
+    appointment = cursor.fetchone()
+
+    if appointment and appointment["phone"]:
+        msg = f"Hello {appointment['name']}, your appointment on {appointment['date']} has been ACCEPTED ✅."
+        send_sms(appointment["phone"], msg)
+
+    flash("✅ Appointment accepted. Patient notified via SMS.")
+    return redirect(url_for("doctor_dashboard"))
+
+
+
+@app.route("/appointments/reject/<int:app_id>")
+def reject_appointment(app_id):
+    cursor.execute("UPDATE appointments SET status='rejected' WHERE id=%s", (app_id,))
+    conn.commit()
+
+    cursor.execute("""
+        SELECT p.phone, p.name, a.date 
+        FROM appointments a 
+        JOIN patients p ON a.patient_id = p.patient_id 
+        WHERE a.id=%s
+    """, (app_id,))
+    appointment = cursor.fetchone()
+
+    if appointment and appointment["phone"]:
+        message = f"Hello {appointment['name']}, your appointment on {appointment['date']} has been REJECTED ❌. Please reschedule."
+        send_sms(appointment["phone"], message)
+
+    flash("❌ Appointment rejected. Patient notified via SMS.")
+    return redirect(url_for("doctor_dashboard"))
+
+
+
 
 
 @app.route("/book", methods=["GET", "POST"])
@@ -332,16 +489,30 @@ def labs_page():
     if 'patient_id' not in session:
         return redirect('/login')
 
-    cursor.execute("""SELECT id, DATE_FORMAT(date, '%%Y-%%m-%%d') AS date, test_name, value, unit,
-                      reference_range, status, clinician_notes
-                      FROM lab_results
-                      WHERE patient_id = %s
-                      ORDER BY date DESC, id DESC""", (session['patient_id'],))
-    labs = cursor.fetchall() or []
+    # Get patient profile (age, gender, vitals)
+    cur1 = conn.cursor(dictionary=True, buffered=True)
+    cur1.execute("""
+        SELECT name, age, gender, blood_sugar, blood_pressure, weight, urine_output
+        FROM patients 
+        WHERE patient_id = %s
+    """, (session['patient_id'],))
+    patient = cur1.fetchone()
+    cur1.close()
+
+    # Get lab results
+    cur2 = conn.cursor(dictionary=True, buffered=True)
+    cur2.execute("""
+        SELECT id, DATE_FORMAT(date, '%%Y-%%m-%%d') AS date, test_name, value, unit,
+               reference_range, status, clinician_notes
+        FROM lab_results
+        WHERE patient_id = %s
+        ORDER BY date DESC, id DESC
+    """, (session['patient_id'],))
+    labs = cur2.fetchall() or []
+    cur2.close()
 
     unique_tests = sorted({row['test_name'] for row in labs})
-    return render_template('labs.html', labs=labs, unique_tests=unique_tests)
-
+    return render_template('labs.html', patient=patient, labs=labs, unique_tests=unique_tests)
 
 
 
