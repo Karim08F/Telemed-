@@ -3,80 +3,178 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Book Appointment</title>
+  <title>Book Appointment | TeleMed</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  
   <style>
+    :root {
+      --primary: #6366f1;
+      --secondary: #0ea5e9;
+      --dark: #0f172a;
+      --glass: rgba(255, 255, 255, 0.85);
+    }
+
     body {
-      background-color: #f8fafc;
-      font-family: 'Segoe UI', sans-serif;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at top right, #e0e7ff, #f1f5f9);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 40px 0;
     }
+
     .booking-card {
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      padding: 2rem;
-      background: white;
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+      padding: 3rem;
+      position: relative;
+      overflow: hidden;
     }
-    .btn-purple {
-      background-color: #6a5acd;
-      color: white;
-      border-radius: 8px;
-      font-weight: 500;
+
+    .booking-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 6px;
+      background: linear-gradient(to right, var(--primary), var(--secondary));
     }
-    .btn-purple:hover {
-      background-color: #5a4abb;
-    }
+
     h2 {
-      color: #004080;
-      font-weight: bold;
-      margin-bottom: 1.5rem;
+      font-weight: 800;
+      color: var(--dark);
+      letter-spacing: -1px;
+      margin-bottom: 0.5rem;
     }
+
+    .doctor-badge {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary);
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 2rem;
+      border: 1px solid rgba(99, 102, 241, 0.1);
+    }
+
     label {
-      font-weight: 500;
-      color: #2e3a59;
+      font-weight: 600;
+      color: #475569;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
     }
+
     .form-control {
-      border-radius: 8px;
-      padding: 0.7rem;
+      border-radius: 12px;
+      padding: 0.8rem 1rem;
+      border: 1px solid rgba(0,0,0,0.08);
+      font-family: inherit;
+      transition: all 0.3s;
     }
-    .doctor-box {
+
+    .form-control:focus {
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+      border-color: var(--primary);
+    }
+
+    .btn-confirm {
+      background: var(--dark);
+      color: white;
       padding: 1rem;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      background-color: #f9f9ff;
-      margin-bottom: 1.5rem;
+      border-radius: 12px;
+      font-weight: 700;
+      border: none;
+      transition: all 0.3s;
+      margin-top: 1rem;
+    }
+
+    .btn-confirm:hover {
+      background: #1e293b;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.2);
+    }
+
+    .back-link {
+      text-decoration: none;
+      color: #64748b;
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: color 0.3s;
+    }
+
+    .back-link:hover { color: var(--primary); }
+
+    .blob {
+      position: absolute;
+      width: 300px; height: 300px;
+      background: var(--primary);
+      filter: blur(80px);
+      opacity: 0.1;
+      z-index: -1;
+      border-radius: 50%;
     }
   </style>
 </head>
-<body class="p-4">
+<body>
+
+  <div class="blob" style="top: 10%; left: 20%;"></div>
+  <div class="blob" style="bottom: 10%; right: 20%; background: var(--secondary);"></div>
+
   <div class="container">
     <div class="row justify-content-center">
-      <div class="col-md-6">
-        <div class="booking-card">
-          <h2 class="text-center">📅 Book Appointment</h2>
+      <div class="col-md-5">
+        
+        <div class="mb-4">
+            <a href="/patient" class="back-link"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+        </div>
 
-          {% if doctor %}
-          <div class="doctor-box">
-            <p><strong>Assigned Doctor:</strong> Dr. {{ doctor.name }}</p>
-            <p><strong>Specialization:</strong> {{ doctor.specialization }}</p>
+        <div class="booking-card">
+          <h2>Book Appointment</h2>
+          <p class="text-muted mb-4">Select your preferred time for a video consultation.</p>
+
+          <div class="doctor-badge">
+            <div class="bg-white rounded-circle p-2 text-center" style="width: 40px; height: 40px;">
+                <i class="fas fa-user-md"></i>
+            </div>
+            <div>
+                <div style="font-size: 0.7rem; text-transform: uppercase; font-weight: 700; opacity: 0.7;">Your Provider</div>
+                <div style="font-weight: 700;">Dr. {{ doctor_name or 'Assigned Specialist' }}</div>
+            </div>
           </div>
-          {% else %}
-          <div class="alert alert-danger">⚠️ No doctor assigned yet. Please contact support.</div>
-          {% endif %}
 
           <form method="POST">
             <div class="mb-3">
-              <label for="date" class="form-label">Date</label>
+              <label for="date"><i class="far fa-calendar-alt me-2"></i>Preferred Date</label>
               <input type="date" name="date" class="form-control" required>
             </div>
-            <div class="mb-3">
-              <label for="time" class="form-label">Time</label>
+            <div class="mb-4">
+              <label for="time"><i class="far fa-clock me-2"></i>Preferred Time</label>
               <input type="time" name="time" class="form-control" required>
             </div>
-            <button type="submit" class="btn btn-purple w-100">Confirm Appointment</button>
+            
+            <button type="submit" class="btn btn-confirm w-100">
+                Confirm Request <i class="fas fa-chevron-right ms-2"></i>
+            </button>
+            
+            <p class="text-center mt-3 small text-muted">
+                <i class="fas fa-info-circle me-1"></i> Your doctor will review and confirm this request shortly.
+            </p>
           </form>
         </div>
+
       </div>
     </div>
   </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -3,164 +3,246 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login</title>
-  <link rel="stylesheet" href="stylesheet.css">
+  <title>Login | TeleMed Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  
+  <style>
+    :root {
+      --primary: #6366f1;
+      --secondary: #0ea5e9;
+      --dark: #0f172a;
+      --glass: rgba(255, 255, 255, 0.85);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at top right, #e0e7ff, #f1f5f9);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Animated background blobs for that "Modern" feel */
+    .blob {
+      position: absolute;
+      width: 400px; height: 400px;
+      background: linear-gradient(var(--primary), var(--secondary));
+      filter: blur(80px);
+      opacity: 0.15;
+      z-index: -1;
+      border-radius: 50%;
+    }
+
+    .login-container {
+      width: 100%;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .login-card {
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 3rem 2.5rem;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+      width: 100%;
+      max-width: 440px;
+      text-align: center;
+    }
+
+    .logo-brand {
+      font-size: 1.5rem;
+      font-weight: 800;
+      background: linear-gradient(to right, var(--primary), var(--secondary));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1.5rem;
+      display: inline-block;
+    }
+
+    .login-card h2 {
+      font-size: 1.75rem;
+      color: var(--dark);
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.5px;
+    }
+
+    .login-card p {
+      color: #64748b;
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+    }
+
+    form { text-align: left; }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 0.5rem;
+      margin-left: 4px;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1.25rem;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      background: white;
+      transition: all 0.3s;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+    }
+
+    .options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .options label { margin: 0; display: flex; align-items: center; gap: 6px; color: #64748b; }
+
+    .options a {
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .btn-signin {
+      width: 100%;
+      background: var(--dark);
+      color: white;
+      padding: 1rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+    }
+
+    .btn-signin:hover {
+      background: #1e293b;
+      transform: translateY(-2px);
+      box-shadow: 0 15px 25px rgba(15, 23, 42, 0.2);
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 0.8rem;
+      margin: 1.5rem 0;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .divider:not(:empty)::before { margin-right: .75em; }
+    .divider:not(:empty)::after { margin-left: .75em; }
+
+    .google-btn {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 0.75rem;
+      background: white;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--dark);
+      text-decoration: none;
+      transition: all 0.3s;
+    }
+
+    .google-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+    .google-btn img { height: 20px; width: 20px; }
+
+    .footer-text {
+      font-size: 0.9rem;
+      margin-top: 2rem;
+      color: #64748b;
+    }
+
+    .footer-text a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 700;
+    }
+  </style>
 </head>
 <body>
+
+  <div class="blob" style="top: -100px; left: -100px;"></div>
+  <div class="blob" style="bottom: -100px; right: -100px; background: var(--secondary); opacity: 0.1;"></div>
+
   <div class="login-container">
     <div class="login-card">
-      <h2>Welcome Back!</h2>
-      <p>We missed you! Please enter your details.</p>
+      <div class="logo-brand"><i class="fas fa-wave-square"></i> TeleMed</div>
+      <h2>Welcome Back</h2>
+      <p>Please enter your credentials to access your secure dashboard.</p>
 
       <form method="POST" action="/login">
-        <label for="role">Login As</label>
-        <select name="role" id="role" required style="width: 100%; padding: 0.7rem; margin: 0.3rem 0 1rem; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95rem;">
-          <option value="patient">Patient</option>
-          <option value="doctor">Doctor</option>
-          <option value="caregiver">Caregiver</option>
+        <label for="role">Login Type</label>
+        <select name="role" id="role" required>
+          <option value="patient">Patient Portal</option>
+          <option value="doctor">Doctor Portal</option>
+          <option value="caregiver">Caregiver Portal</option>
         </select>
 
-        <label for="email">Email</label>
-        <input type="email" id="email" name="email" placeholder="Enter your Email" required>
+        <label for="email">Email Address</label>
+        <input type="email" id="email" name="email" placeholder="name@company.com" required>
 
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Enter Password" required>
+        <input type="password" id="password" name="password" placeholder="••••••••" required>
 
         <div class="options">
           <label><input type="checkbox" /> Remember me</label>
           <a href="#">Forgot password?</a>
         </div>
 
-        <button type="submit" class="btn">Sign in</button>
+        <button type="submit" class="btn-signin">Sign in to Account</button>
       </form>
 
-      <div class="divider">or</div>
+      <div class="divider">or continue with</div>
 
-      <a href="/auth/google" class="google-btn">
+      <a href="#" class="google-btn">
         <img src="https://image.similarpng.com/file/similarpng/very-thumbnail/2020/06/Logo-google-icon-PNG.png" alt="Google">
-        Link with Google
+        Google Account
       </a>
 
-      <p class="footer-text">Don't have an account? <a href="/register">Contact the support team</a></p>
+      <p class="footer-text">
+        Need assistance? 
+        <a href="#">Contact Support</a>
+      </p>
     </div>
   </div>
 </body>
-
-
-<style>
-  
-body {
-  margin: 0;
-  font-family: 'Segoe UI', sans-serif;
-  background: linear-gradient(to bottom right, #a1c4fd, #c2e9fb);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
-
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-}
-
-.login-card {
-  background: white;
-  padding: 2rem 2.5rem;
-  border-radius: 16px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-  width: 100%;
-  max-width: 400px;
-  text-align: center;
-}
-
-.login-card h2 {
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-}
-
-.login-card p {
-  color: #666;
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
-}
-
-input[type="email"],
-input[type="password"] {
-  width: 100%;
-  padding: 0.7rem;
-  margin: 0.3rem 0 1rem;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  font-size: 0.95rem;
-}
-
-.options {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.8rem;
-  color: #666;
-  margin-bottom: 1rem;
-}
-
-.options a {
-  text-decoration: none;
-  color: #4d63dd;
-}
-
-.btn {
-  width: 100%;
-  background-color: #4d63dd;
-  color: white;
-  padding: 0.8rem;
-  border: none;
-  border-radius: 10px;
-  font-size: 1rem;
-  margin-bottom: 1rem;
-  cursor: pointer;
-}
-
-.divider {
-  color: #aaa;
-  margin: 1rem 0;
-  font-size: 0.85rem;
-}
-
-.google-btn {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid #ccc;
-  border-radius: 10px;
-  padding: 0.6rem;
-  background: white;
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: #444;
-  text-decoration: none;
-}
-
-.google-btn img {
-  height: 20px;
-  width: 20px;
-}
-
-.footer-text {
-  font-size: 0.85rem;
-  margin-top: 1.5rem;
-  color: #666;
-}
-
-.footer-text a {
-  color: #4d63dd;
-  text-decoration: none;
-  font-weight: 500;
-}
-
-</style>
 </html>
-

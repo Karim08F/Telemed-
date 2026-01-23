@@ -2,159 +2,234 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Doctor Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Provider Dashboard | TeleMed AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  
   <style>
-    body {
-      margin: 0; padding: 0;
-      background-color: #f8fafc;
-      font-family: 'Segoe UI', Tahoma, sans-serif;
-      color: #ffff;
+    :root {
+      --primary: #6366f1;
+      --secondary: #0ea5e9;
+      --dark: #0f172a;
+      --glass: rgba(255, 255, 255, 0.9);
     }
-    .container { max-width: 1100px; margin-top: 50px; }
-    h2, h5 { font-weight: 700; color: #004080; margin-bottom: 20px; }
-    .card { border-radius: 12px; border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-    .table { border-radius: 12px; overflow: hidden; }
-    .btn-primary { background-color: 004080#004080; border-color: 004080#004080; border-radius: 6px; font-weight: 500; }
-    .btn-primary:hover { background-color: 004080#004080; border-color: #004080; }
-    .btn-danger, .btn-success { border-radius: 6px; font-weight: 500; }
-    .navbar { border-radius: 0 0 12px 12px; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at top right, #e0e7ff, #f1f5f9);
+      color: var(--dark);
+      min-height: 100vh;
+      overflow-y: auto; /* Ensures scrolling works */
+    }
+
+    .navbar {
+      background: var(--glass) !important;
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.3);
+      padding: 0.8rem 5%;
+    }
+
+    .navbar-brand {
+      font-weight: 800;
+      background: linear-gradient(to right, var(--primary), var(--secondary));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .card {
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+      margin-bottom: 2rem;
+    }
+
+    .card-header {
+      background: transparent !important;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+      padding: 1.25rem;
+      font-weight: 700;
+    }
+
+    /* Scrollable Log Style */
+    .log-scroll-area {
+      max-height: 120px;
+      overflow-y: auto;
+      padding-right: 5px;
+    }
+
+    .log-item {
+      background: rgba(255,255,255,0.5);
+      border-left: 3px solid var(--secondary);
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+
+    .btn-ai {
+      background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+      color: white; border: none; font-weight: 600; transition: 0.3s;
+    }
+
+    .btn-ai:hover { transform: translateY(-2px); color: white; box-shadow: 0 5px 15px rgba(168, 85, 247, 0.3); }
+
+    .ai-bubble {
+      background: #f8fafc;
+      border-left: 5px solid var(--primary);
+      padding: 1.5rem;
+      border-radius: 16px;
+      font-style: italic;
+      color: #334155;
+    }
   </style>
 </head>
 <body>
 
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg" style="background-color:#004080;">
+<nav class="navbar navbar-expand-lg navbar-light sticky-top">
   <div class="container-fluid">
-    <span class="navbar-brand text-white fw-bold">Doctor Dashboard</span>
-    <div class="d-flex">
-      <span class="navbar-text text-white me-3">
-        Welcome, {{ doctor_name }}
-      </span>
-      <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">Logout</a>
+    <span class="navbar-brand fs-4"><i class="fas fa-microscope me-2"></i>TeleMed Provider</span>
+    <div class="d-flex align-items-center">
+      <div class="me-3 text-end d-none d-md-block">
+        <div class="small fw-bold">Dr. {{ doctor_name }}</div>
+      </div>
+      <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger rounded-pill px-3">Logout</a>
     </div>
   </div>
 </nav>
 
-<div class="container">
+<div class="container py-5" style="max-width: 1200px;">
 
-  <!-- Patients Section -->
-  <div class="card mb-4">
-    <div class="card-header" style="background-color:#6a5acd; color:white;">
-      <h5 class="mb-0">My Patients</h5>
+  <div class="card">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="fas fa-calendar-check text-primary me-2"></i> Pending Requests</span>
+      <span class="badge bg-primary rounded-pill">{{ appointments|length }}</span>
     </div>
-    <div class="card-body">
-      {% if patients %}
+    <div class="card-body p-0">
+      {% if appointments %}
       <div class="table-responsive">
-        <table class="table table-striped table-bordered">
+        <table class="table table-hover mb-0 align-middle">
           <thead class="table-light">
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Recent Logs</th>
-              <th>Recommendation</th>
-              <th>AI Suggestion</th>
+              <th class="ps-4">Patient</th>
+              <th>Requested Date</th>
+              <th class="text-end pe-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appt in appointments %}
+            <tr>
+              <td class="ps-4"><strong>{{ appt.patient_name }}</strong></td>
+              <td>{{ appt.date }}</td>
+              <td class="text-end pe-4">
+                <a href="/appointment/{{ appt.id }}/accept" class="btn btn-sm btn-success rounded-pill px-3">Accept</a>
+                <button class="btn btn-sm btn-light rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#editModal{{ appt.id }}">Reschedule</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-center p-4 text-muted">No pending requests.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><i class="fas fa-users text-primary me-2"></i> Patient Population</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Patient Profile</th>
+              <th>Clinical History (Last 5)</th>
+              <th class="text-center">Intelligence</th>
+              <th class="text-end pe-4">Action</th>
             </tr>
           </thead>
           <tbody>
             {% for p in patients %}
             <tr>
-              <td>{{ p.name }}</td>
-              <td>{{ p.email }}</td>
+              <td class="ps-4">
+                <div class="fw-bold">{{ p.name }}</div>
+                <div class="text-muted small">{{ p.email }}</div>
+              </td>
               <td>
-                {% if patient_logs[p.patient_id] %}
-                  <ul class="mb-0">
+                <div class="log-scroll-area">
                   {% for log in patient_logs[p.patient_id] %}
-                    <li>{{ log.date }} – {{ log.symptoms }} ({{ log.medication }})</li>
-                  {% endfor %}
-                  </ul>
-                {% else %}
-                  <em>No logs</em>
-                {% endif %}
-              </td>
-              <td>
-                <a href="{{ url_for('recommend', patient_id=p.patient_id) }}" class="btn btn-sm btn-primary">
-                  Recommend
-                </a>
-              </td>
-              <td>
-                <!-- AI Suggestion Button -->
-                <button type="button" class="btn btn-sm btn-primary"
-                        data-bs-toggle="modal" data-bs-target="#aiModal{{ p.patient_id }}">
-                  AI Suggestion
-                </button>
-
-                <!-- AI Suggestion Modal -->
-                <div class="modal fade" id="aiModal{{ p.patient_id }}" tabindex="-1" aria-hidden="true">
-                  <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                      <div class="modal-header" style="background-color:#6a5acd; color:white;">
-                        <h5 class="modal-title">AI Suggestion for {{ p.name }}</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                      </div>
-                      <div class="modal-body">
-                        <p>{{ ai_summaries[p.patient_id] }}</p>
-                      </div>
-                      <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                      </div>
-                    </div>
+                  <div class="log-item">
+                    <span class="fw-bold text-secondary" style="font-size: 0.7rem;">{{ log.date }}</span><br>
+                    {{ log.symptoms }}
                   </div>
+                  {% endfor %}
                 </div>
               </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-        <p>No patients assigned yet.</p>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- Appointments Section -->
-  <div class="card">
-    <div class="card-header" style="background-color:#6a5acd; color:white;">
-      <h5 class="mb-0">Pending Appointments</h5>
-    </div>
-    <div class="card-body">
-      {% if appointments %}
-      <div class="table-responsive">
-        <table class="table table-bordered table-striped">
-          <thead class="table-light">
-            <tr>
-              <th>ID</th>
-              <th>Date</th>
-              <th>Patient</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for app in appointments %}
-            <tr>
-              <td>{{ app.id }}</td>
-              <td>{{ app.date }}</td>
-              <td>{{ app.patient_name }}</td>
-              <td>
-                <a href="{{ url_for('update_appointment', appointment_id=app.id, action='accept') }}"
-                   class="btn btn-success btn-sm">Accept</a>
-                <a href="{{ url_for('update_appointment', appointment_id=app.id, action='reject') }}"
-                   class="btn btn-danger btn-sm">Reject</a>
+              <td class="text-center">
+                <button class="btn btn-sm btn-ai px-4 rounded-pill" data-bs-toggle="modal" data-bs-target="#aiModal{{ p.patient_id }}">
+                  <i class="fas fa-robot me-1"></i> Ask AI
+                </button>
+              </td>
+              <td class="text-end pe-4">
+                <a href="{{ url_for('recommend', patient_id=p.patient_id) }}" class="btn btn-sm btn-dark rounded-pill">Advise</a>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      {% else %}
-        <p>No pending appointments.</p>
-      {% endif %}
     </div>
   </div>
-
 </div>
+
+{% for p in patients %}
+<div class="modal fade" id="aiModal{{ p.patient_id }}" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow-lg border-0" style="border-radius: 25px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold"><i class="fas fa-brain text-primary me-2"></i>Clinical Advice</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="ai-bubble mb-3">
+          "{{ ai_summaries[p.patient_id] }}"
+        </div>
+        <small class="text-muted"><i class="fas fa-info-circle me-1"></i> Based on trend analysis of the last 5 logs.</small>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">Close</button>
+        <a href="{{ url_for('recommend', patient_id=p.patient_id) }}" class="btn btn-primary rounded-pill px-4">Act on Advice</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% for appt in appointments %}
+<div class="modal fade" id="editModal{{ appt.id }}" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <form action="/appointment/edit/{{ appt.id }}" method="POST">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">Reschedule Request</h5>
+                </div>
+                <div class="modal-body">
+                    <input type="datetime-local" name="new_date" class="form-control mb-3" required>
+                    <textarea name="reason" class="form-control" placeholder="Reason for change..." required></textarea>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="submit" class="btn btn-primary rounded-pill px-4">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>

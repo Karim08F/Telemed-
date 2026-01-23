@@ -1,188 +1,364 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>TeleMed</title>
-  <link rel="stylesheet" href="stylesheet.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TeleMed | AI-Powered Kidney Care</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
   <style>
-   
+    :root {
+      --primary: #6366f1;
+      /* Modern Indigo */
+      --secondary: #0ea5e9;
+      /* Sky Blue */
+      --dark: #0f172a;
+      --light: #f8fafc;
+      --glass: rgba(255, 255, 255, 0.7);
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #f8fafc;
-      color: #2e3a59;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at top right, #e0e7ff, #f8fafc);
+      color: var(--dark);
+      overflow-x: hidden;
     }
 
+    /* Modern Navbar */
     .navbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 1.5rem 3rem;
-      background-color: #ffffff;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      padding: 1rem 10%;
+      background: var(--glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
       position: fixed;
       width: 100%;
       top: 0;
-      z-index: 10;
+      z-index: 1000;
     }
+
     .logo {
       font-size: 1.6rem;
-      font-weight: bold;
-      color: #3b82f6;
+      font-weight: 800;
+      background: linear-gradient(to right, var(--primary), var(--secondary));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -1px;
     }
-    .auth-buttons a {
-      margin-left: 1rem;
-      text-decoration: none;
-      font-weight: 500;
-    }
+
     .auth-buttons .login {
-      border: 1px solid #6a5acd;
-      color: #6a5acd;
-      padding: 0.5rem 1rem;
-      border-radius: 6px;
+      text-decoration: none;
+      color: var(--dark);
+      font-weight: 600;
+      margin-right: 1.5rem;
+      transition: color 0.3s;
     }
+
     .auth-buttons .signup {
-      background-color: #6a5acd;
+      text-decoration: none;
+      background: var(--dark);
       color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 6px;
+      padding: 0.8rem 1.5rem;
+      border-radius: 12px;
+      font-weight: 600;
+      box-shadow: 0 4px 15px rgba(15, 23, 42, 0.2);
+      transition: transform 0.3s, background 0.3s;
     }
 
+    .auth-buttons .signup:hover {
+      transform: translateY(-2px);
+      background: #1e293b;
+    }
 
+    /* Hero Section */
     .hero {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8rem 3rem 4rem; 
+      padding: 10rem 10% 5rem;
       min-height: 100vh;
-      background: #eef1f9;
-    }
-    .hero .text {
-      flex: 1;
-      max-width: 550px;
-    }
-    .hero .tag {
-      display: inline-block;
-      background: #e0f7fa;
-      color: #00796b;
-      padding: 0.4rem 0.8rem;
-      border-radius: 20px;
-      font-size: 0.9rem;
-      margin-bottom: 1rem;
-    }
-    .hero h1 {
-      font-size: 4.0rem;
-      font-weight: 700;
-      line-height: 1.2;
-      color: #2e3a59;
-    }
-    .hero .highlight {
-      color: #3b82f6;
-    }
-    .hero p {
-      margin-top: 1.8rem;
-      font-size: 1.3rem;
-      line-height: 1.6;
-      color: #555;
-    }
-    .hero .btn {
-      display: inline-block;
-      margin-top: 2rem;
-      background-color: #6a5acd;
-      color: white;
-      padding: 0.9rem 1.8rem;
-      text-decoration: none;
-      border-radius: 10px;
-      font-weight: 1000;
-      transition: background 0.3s;
-    }
-    .hero .btn:hover {
-      background-color: #5a4abb;
     }
 
-
-    .hero .image {
+    .hero-content {
       flex: 1;
-      display: flex;
-      justify-content: right;
+      max-width: 650px;
     }
-    .hero .image img {
-      width: 600px;
-      max-width: 200%;
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      background: white;
+      padding: 0.5rem 1rem;
       border-radius: 30px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+      margin-bottom: 1.5rem;
+      border: 1px solid rgba(99, 102, 241, 0.1);
     }
 
-  
-    .stats {
+    .hero h1 {
+      font-size: 4rem;
+      font-weight: 800;
+      line-height: 1.1;
+      color: var(--dark);
+      letter-spacing: -2px;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(to right, var(--primary), var(--secondary));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      margin-top: 1.5rem;
+      font-size: 1.15rem;
+      line-height: 1.7;
+      color: #64748b;
+      max-width: 90%;
+    }
+
+    .cta-group {
+      margin-top: 2.5rem;
       display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .btn-main {
+      background: var(--primary);
+      color: white;
+      padding: 1rem 2rem;
+      text-decoration: none;
+      border-radius: 14px;
+      font-weight: 700;
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+      transition: all 0.3s;
+    }
+
+    .btn-main:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 30px rgba(99, 102, 241, 0.4);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
       gap: 2rem;
-      margin-top: 3rem;
+      margin-top: 4rem;
     }
-    .stats div h4 {
-      font-size: 2.5rem;
-      font-weight: 500;
-      color: #3b82f6;
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.5);
+      padding: 1.5rem;
+      border-radius: 20px;
+      border: 1px solid white;
     }
-    .stats div p {
-      margin-top: 0.3rem;
-      color: #555;
-      font-size: 1.0rem;
+
+    .stat-card h4 {
+      font-size: 1.8rem;
+      color: var(--dark);
+      margin-bottom: 0.2rem;
+    }
+
+    .stat-card p {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin: 0;
+    }
+
+    /* Hero Image Wrapper */
+    .hero-image {
+      flex: 1;
+      display: flex;
+      justify-content: flex-end;
+      position: relative;
+    }
+
+    .image-bg-blob {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: linear-gradient(45deg, var(--primary), var(--secondary));
+      filter: blur(80px);
+      opacity: 0.2;
+      z-index: -1;
+      top: 10%;
+      right: 10%;
+    }
+
+    .hero-image img {
+      width: 100%;
+      max-width: 550px;
+      border-radius: 30px;
+      transform: perspective(1000px) rotateY(-5deg);
+      box-shadow: 20px 20px 60px rgba(0, 0, 0, 0.1);
+      transition: transform 0.5s;
+    }
+
+    .hero-image:hover img {
+      transform: perspective(1000px) rotateY(0deg);
+    }
+
+    /* Floating AI Card */
+    .ai-float {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      background: white;
+      padding: 1rem;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .hero {
+        flex-direction: column;
+        text-align: center;
+        padding-top: 7rem;
+        padding-left: 5%;
+        padding-right: 5%;
+      }
+
+      .hero-content {
+        max-width: 100%;
+        margin-bottom: 3rem;
+      }
+
+      .hero h1 {
+        font-size: 2.5rem;
+      }
+
+      .cta-group {
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .hero-image {
+        justify-content: center;
+        width: 100%;
+        margin-bottom: 2rem;
+      }
+
+      .hero-image img {
+        max-width: 100%;
+      }
+
+      .hero p {
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .navbar {
+        padding: 0.8rem 5%;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-top: 3rem;
+      }
     }
   </style>
 </head>
+
 <body>
 
-  <header class="navbar">
-    <div class="logo">TeleMed</div>
+  <nav class="navbar">
+    <div class="logo"><i class="fas fa-wave-square"></i> TeleMed</div>
     <div class="auth-buttons">
-      <a href="/login" class="login">Login</a>
-      <a href="" class="signup">Get Started</a>
+      <a href="/login" class="login">Log in</a>
+      <a href="/login" class="signup">Get Started Free</a>
     </div>
-  </header>
-
+  </nav>
 
   <section class="hero">
- 
-    <div class="text">
-      <span class="tag"> Clinic at your Tips</span>
+    <div class="hero-content">
+      <div class="badge">
+        <i class="fas fa-sparkles me-2"></i>AI-Powered Kidney Care Platform
+      </div>
       <h1>
-        Get a complete <span class="highlight">Health Analysis</span> at TeleMed
+        Tele-MED <span>Health Intelligence</span> for CKD Patients.
       </h1>
       <p>
-        A digital health platform designed specifically for patients with chronic kidney post-dialysis care. 
-        Empower yourself to log your daily health status while our AI analyzes trends and recommends medical attention when necessary.
-        We are the Digital Stethoscope for Chronic Kidney Disease:
-         listening daily, interpreting with AI, empowering doctors to act early.
+        The digital stethoscope for post-dialysis care. We listen daily through your logs, interpret with medical-grade
+        AI, and empower your doctors to act before complications arise.
       </p>
-      <a href="#" class="btn">Your Health, Our Priority →</a>
 
-     
-      <div class="stats">
-        <div>
+      <div class="cta-group">
+        <a href="/login" class="btn-main">Start Your Analysis →</a>
+        <div class="text-muted small ms-3 d-none d-md-block">
+          <i class="fas fa-shield-halved"></i> SHA Compliant & Secure
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
           <h4>24/7</h4>
-          <p>Support</p>
+          <p>Real-time Monitoring</p>
         </div>
-        <div>
-          <h4>1000+</h4>
-          <p>Patients</p>
+        <div class="stat-card">
+          <h4>100%</h4>
+          <p>Private & Secure</p>
         </div>
-        <div>
+        <div class="stat-card">
           <h4>99%</h4>
-          <p>Accuracy</p>
+          <p>Trend Accuracy</p>
         </div>
       </div>
     </div>
 
-  
-    <div class="image">
-      <img src="static/doctor.png" alt="Doctor Image"/>
+    <div class="hero-image">
+      <div class="image-bg-blob"></div>
+      <img src="static/doctor.png" alt="Telemedicine Interface" />
+
+      <div class="ai-float">
+        <div class="bg-primary text-white rounded-circle p-2" style="background: var(--primary);">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div>
+          <div style="font-size: 0.7rem; font-weight: 700;">AI ANALYZING...</div>
+          <div style="font-size: 0.8rem; color: var(--secondary);">Patient #102 Stable</div>
+        </div>
+      </div>
     </div>
   </section>
+
 </body>
+
 </html>

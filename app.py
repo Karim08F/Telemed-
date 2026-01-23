@@ -1,43 +1,41 @@
-from flask import Flask, render_template, request, redirect, session, flash, url_for, jsonify
+from flask import Flask, render_template, request, redirect, session, flash, url_for, g
 import mysql.connector
 import os
-import africastalking
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-
 
 load_dotenv()
 
-# -------------------- DATABASE --------------------
-try:
-    conn = mysql.connector.connect(
-        host="localhost",            
-        port=3306,                   
-        user="root",                 
-        password="",                 
-        database="telemed_system"    
-    )
-    cursor = conn.cursor(dictionary=True)
-    print(" Connected to local MySQL successfully")
-except mysql.connector.Error as err:
-    print(" Error connecting to MySQL:", err)
-    exit()
+# ---------------- DB CONNECTION ----------------
+# ---------------- DB CONNECTION ----------------
+def get_db():
+    if 'db' not in g:
+        try:
+            g.db = mysql.connector.connect(
+                host=os.getenv("DB_HOST", "localhost"),
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASSWORD", ""),
+                database=os.getenv("DB_NAME", "telemed_system"),
+                port=int(os.getenv("DB_PORT", 3306))
+            )
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            return None
+    return g.db
+
+def close_db(e=None):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 
-username = "sandbox"   
-api_key = "atsk_ff62bffca1190c7c11dfa010401b3fd68de662c2829e11245ac00996fa144347be477ab2"
-
-def send_sms(recipient, message):
-    africastalking.initialize(username, api_key)
-    sms = africastalking.SMS
-    try:
-        response = sms.send(message, [recipient])
-        print("SMS sent:", response)
-    except Exception as e:
-        print(f"Failed to send SMS: {str(e)}")
+# Global cursor removed to prevent connection timeouts/errors
+# Cursors should be created per request
 
 
+# ---------------- GEMINI SETUP ----------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
@@ -69,239 +67,428 @@ def analyze_patient_logs(logs_text: str):
 
 
 
+# ---------------- FLASK APP ----------------
 app = Flask(__name__)
-app.secret_key = '123'
+app.secret_key = "123"
+app.teardown_appcontext(close_db)
 
-
-@app.route('/')
+# ---------------- HOME ROUTE ----------------
+@app.route("/")
 def home():
-    return render_template('base.html')
+        return render_template("base.html")
 
 
-@app.route('/login', methods=['GET', 'POST'])
+# ---------------- LOGIN ----------------
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        role = request.form.get('role')  
-        email = request.form['email']
-        password = request.form['password']
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if request.method == "POST":
+        role = request.form["role"]
+        email = request.form["email"]
+        password = request.form["password"]
 
-        
-        cursor.execute("SELECT * FROM admins WHERE email = %s AND password = %s", (email, password))
-        admin = cursor.fetchone()
-        if admin:
-            session['admin_id'] = admin['admin_id']
-
-            session['admin_name'] = admin['name']
-            return redirect('/admin/dashboard')
-
-    
-        if role in ['patient', 'caregiver']:
-            cursor.execute("SELECT * FROM patients WHERE email = %s AND password = %s", (email, password))
+        if role == "patient":
+            cursor.execute("SELECT * FROM patients WHERE email=%s AND password=%s", (email, password))
             user = cursor.fetchone()
             if user:
-                session['patient_id'] = user['patient_id']
-                session['patient_name'] = user['name']
-                session['is_caregiver'] = (role == 'caregiver')
+                session["patient_id"] = user["patient_id"]
+                session["patient_name"] = user["name"]
+                return redirect("/patient")
 
-                # Auto-assign a doctor if none
-                if not user.get("doctor_id"):
-                    cursor.execute("SELECT doctor_id FROM doctors ORDER BY RAND() LIMIT 1")
-                    doctor = cursor.fetchone()
-                    if doctor:
-                        cursor.execute("UPDATE patients SET doctor_id = %s WHERE patient_id = %s",
-                                       (doctor['doctor_id'], user['patient_id']))
-                        conn.commit()
+        if role == "doctor":
+            cursor.execute("SELECT * FROM doctors WHERE email=%s AND password=%s", (email, password))
+            doc = cursor.fetchone()
+            if doc:
+                session["doctor_id"] = doc["doctor_id"]
+                session["doctor_name"] = doc["name"]
+                return redirect("/doctor")
 
-                return redirect('/patient')
-            else:
-                flash('Invalid credentials for patient/caregiver.')
-
-        elif role == 'doctor':
-            cursor.execute("SELECT * FROM doctors WHERE email = %s AND password = %s", (email, password))
-            user = cursor.fetchone()
-            if user:
-                session['doctor_id'] = user['doctor_id']
-                session['doctor_name'] = user['name']
-                return redirect(url_for('doctor_dashboard'))
-            else:
-                flash('Invalid doctor credentials.')
-
-    return render_template('login.html')
-
-
-
+        flash("Invalid login credentials", "danger")
+    return render_template("login.html")
+   #---------------- PATIENT DASHBOARD ----------------
 @app.route('/patient')
 def patient():
     if 'patient_id' not in session:
         return redirect('/login')
 
-    # Get last 5 logs (most recent first)
-    cursor.execute("""SELECT date, symptoms, medication 
-                      FROM health_logs 
-                      WHERE patient_id = %s 
-                      ORDER BY date DESC LIMIT 5""", (session['patient_id'],))
-    logs = cursor.fetchall()
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    patient_id = session['patient_id']
 
-    # Convert logs to readable history for AI
-    history = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})"
-                         for log in logs]) if logs else "No logs available."
-
-    # AI prompt
-    prompt = f"""
-    You are a nephrologist AI reviewing a dialysis patient's recent logs.
-
-    Patient’s last 5 logs:
-    {history}
-
-    Task:
-    1. Classify the patient’s overall condition as Improving, Stable, or Worsening.
-    2. Give exactly one short medical suggestion (≤160 characters).
-    3. Respond in this format:
-
-    Condition: <Improving/Stable/Worsening>
-    Advice: <short suggestion>
-    """
-    ai_message = analyze_patient_logs(prompt)
-
-    # --- Generate trend data dynamically from logs ---
-    trend_data = []
-    labels = []
-
-    if logs:
-        for log in reversed(logs):  # chronological order (oldest → newest)
-            labels.append(log['date'].strftime("%Y-%m-%d"))
-
-            # crude scoring: fewer symptoms = higher score
-            symptoms_text = log['symptoms'] or ""
-            score = max(1, 10 - min(len(symptoms_text.split()), 9))  
-            trend_data.append(score)
-    else:
-        trend_data = []
-        labels = []
-
-    # Doctor’s advice
-    cursor.execute("SELECT advice FROM recommendations WHERE patient_id = %s ORDER BY date DESC LIMIT 1",
-                   (session['patient_id'],))
-    rec = cursor.fetchone()
-
+    # -----------------------------
+    # Ensure doctor is assigned
+    # -----------------------------
     cursor.execute("""
-        SELECT r.advice, r.date, d.name AS doctor_name 
+        SELECT p.doctor_id, d.name AS doctor_name
+        FROM patients p
+        LEFT JOIN doctors d ON p.doctor_id = d.doctor_id
+        WHERE p.patient_id = %s
+    """, (patient_id,))
+    pdata = cursor.fetchone()
+
+    doctor_name = pdata['doctor_name'] if pdata else None
+
+    if pdata and pdata['doctor_id'] is None:
+        cursor.execute("SELECT doctor_id FROM doctors ORDER BY RAND() LIMIT 1")
+        d = cursor.fetchone()
+        if d:
+            cursor.execute(
+                "UPDATE patients SET doctor_id=%s WHERE patient_id=%s",
+                (d['doctor_id'], patient_id)
+            )
+            conn.commit()
+
+            cursor.execute(
+                "SELECT name FROM doctors WHERE doctor_id=%s",
+                (d['doctor_id'],)
+            )
+            doctor_name = cursor.fetchone()['name']
+
+    # -----------------------------
+    # Fetch appointment updates
+    # Latest updates first
+    # -----------------------------
+    cursor.execute("""
+        SELECT 
+            a.id,
+            a.date,
+            a.status,
+            a.update_reason,
+            d.name AS doctor_name
+        FROM appointments a
+        LEFT JOIN doctors d ON a.doctor_id = d.doctor_id
+        WHERE a.patient_id = %s
+        ORDER BY a.updated_at DESC, a.date DESC
+    """, (patient_id,))
+    all_appointments = cursor.fetchall() or []
+
+    pending = [a for a in all_appointments if a['status'] == 'pending'][:2]
+    updates = [a for a in all_appointments if a['status'] != 'pending'][:5]
+
+    appointments = updates + pending
+
+    # -----------------------------
+    # Health logs (last 5)
+    # -----------------------------
+    cursor.execute("""
+        SELECT date, symptoms, medication
+        FROM health_logs
+        WHERE patient_id = %s
+        ORDER BY date DESC
+        LIMIT 5
+    """, (patient_id,))
+    logs = cursor.fetchall() or []
+
+    # -----------------------------
+    # AI analysis
+    # -----------------------------
+    if logs:
+        history = "\n".join([f"{l['date']}: {l['symptoms']}" for l in logs])
+        ai_message = analyze_patient_logs(
+            f"Patient logs:\n{history}\nProvide a short supportive health insight."
+        )
+    else:
+        ai_message = "No health logs yet. Start logging to receive AI insights."
+
+    # -----------------------------
+    # Doctor recommendations (Fetch ALL for trend)
+    # -----------------------------
+    cursor.execute("""
+        SELECT r.advice, r.date, d.name AS doctor_name
         FROM recommendations r
         JOIN doctors d ON r.doctor_id = d.doctor_id
-        WHERE r.patient_id = %s 
-        ORDER BY r.date DESC LIMIT 5
-    """, (session['patient_id'],))
-    recommendations = cursor.fetchall()
+        WHERE r.patient_id = %s
+        ORDER BY r.date DESC
+    """, (patient_id,))
+    all_recommendations = cursor.fetchall() or []
 
-    doctor_advice = rec['advice'] if rec else "No recent doctor advice."
+    # Filter for trend graph (must start with keyword)
+    # Create a map of date string (YYYY-MM-DD) -> score
+    rec_map = {}
+    for rec in all_recommendations:
+        advice_lower = rec['advice'].lower().strip()
+        score = None
+        if advice_lower.startswith("improving"):
+            score = 8
+        elif advice_lower.startswith("stable"):
+            score = 5
+        elif advice_lower.startswith("worsening"):
+            score = 2
+        
+        # Only keep the latest for that day if not already set (since query is DESC)
+        date_str = rec['date'].strftime("%Y-%m-%d")
+        if score is not None and date_str not in rec_map:
+            rec_map[date_str] = score
 
-    return render_template('patient.html',
-                           patient_name=session['patient_name'],
-                           logs=logs,
-                           ai_message=ai_message,
-                           doctor_advice=doctor_advice,
-                           trend_data=trend_data,
-                           labels=labels,
-                           recommendations=recommendations)
+    # Generate last 7 days
+    from datetime import timedelta
+    today = datetime.now().date()
+    labels = []
+    trend_data = []
+    
+    # Iterate last 7 days
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        day_str = day.strftime("%Y-%m-%d")
+        
+        # X-Axis Label: Day Name (e.g., Monday)
+        labels.append(day.strftime("%A"))
+        
+        # Y-Axis Data: Score or None
+        trend_data.append(rec_map.get(day_str, None))
+
+    # Data for Display List (Latest 5)
+    recommendations = all_recommendations[:5]
+
+    # -----------------------------
+    # Render patient dashboard
+    # -----------------------------
+    return render_template(
+        'patient.html',
+        patient_name=session.get('patient_name', 'Patient'),
+        doctor_name=doctor_name,
+        appointments=appointments,
+        logs=logs,
+        ai_message=ai_message,
+        labels=labels,
+        trend_data=trend_data,
+        recommendations=recommendations
+    )
 
 
-@app.route('/log', methods=['POST'])
-def log_status():
-    if 'patient_id' not in session:
-        return redirect('/login')
+@app.route("/appointment/edit/<int:appointment_id>", methods=["POST"])
+def edit_appointment(appointment_id):
+    if "doctor_id" not in session:
+        return redirect("/login")
+    
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
 
-    symptoms = request.form['symptoms']
-    medication = request.form['medication']
+    new_date = request.form.get("new_date")
+    reason = request.form.get("reason")
 
-    cursor.execute("INSERT INTO health_logs (patient_id, symptoms, medication) VALUES (%s, %s, %s)",
-                   (session['patient_id'], symptoms, medication))
-    conn.commit()
-    flash("Health status logged successfully.")
-    return redirect('/patient')
+    if not new_date or not reason:
+        flash("Date and reason are required.", "danger")
+        return redirect(url_for("doctor_dashboard"))
 
+    cur = conn.cursor(dictionary=True)
 
-@app.route('/doctor')
-def doctor_dashboard():
-    if 'doctor_id' not in session:
-        return redirect('/login')
-
-    doctor_id = session['doctor_id']
-
-    # Fetch patients assigned to this doctor
-    cursor.execute("SELECT p.patient_id, p.name, p.email FROM patients p WHERE p.doctor_id = %s", (doctor_id,))
-    patients = cursor.fetchall()
-
-    patient_logs, ai_summaries = {}, {}
-
-    for p in patients:
-       
-        cursor.execute("""
-            SELECT date, symptoms, medication 
-            FROM health_logs 
-            WHERE patient_id = %s 
-            ORDER BY date DESC LIMIT 5
-        """, (p['patient_id'],))
-        logs = cursor.fetchall()
-        patient_logs[p['patient_id']] = logs
-
-        if logs:
-          
-            logs_text = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})" for log in logs])
-
-            # Precise AI suggestion for doctor
-            prompt = f"""
-    ;;        You are a nephrologist AI reviewing a dialysis patient's recent logs.
-
-            Patient’s last 5 logs:
-            {logs_text}
-
-            Task:
-            
-            1. Provide a precise, actionable recommendation for the doctor in 2-3 sentences.
-            2. Respond in this format:
-             <precise recommendation>
-            """
-
-            ai_summaries[p['patient_id']] = analyze_patient_logs(prompt)
-        else:
-            ai_summaries[p['patient_id']] = "No recent logs. Recommend follow-up."
-
-    # Fetch pending appointments
-    cursor.execute("""
-        SELECT a.id, a.date, p.name AS patient_name 
+    # Fetch patient info
+    cur.execute("""
+        SELECT p.phone, p.name
         FROM appointments a
         JOIN patients p ON a.patient_id = p.patient_id
-        WHERE a.doctor_id = %s AND a.status = 'pending'
+        WHERE a.id = %s
+    """, (appointment_id,))
+    patient = cur.fetchone()
+
+    # EDIT appointment (clean + safe)
+    cur.execute("""
+        UPDATE appointments
+        SET
+            date = %s,
+            status = 'rescheduled',
+            update_reason = %s,
+            updated_at = NOW()
+        WHERE id = %s
+    """, (new_date, reason, appointment_id))
+    conn.commit()
+    cur.close()
+
+
+    flash("Appointment updated successfully. Patient notified.", "warning")
+    return redirect(url_for("doctor_dashboard"))
+
+
+
+@app.route("/appointment/<int:appointment_id>/<action>", methods=["POST", "GET"])
+def update_appointment(appointment_id, action):
+    if "doctor_id" not in session:
+        return redirect("/login")
+    
+    conn = get_db()
+
+    if action not in ("accept", "reject"):
+        flash("Invalid action", "warning")
+        return redirect(url_for("doctor_dashboard"))
+
+    new_status = "accepted" if action == "accept" else "rejected"
+
+    cur = conn.cursor(dictionary=True)
+
+    # Get patient info
+    cur.execute("""
+        SELECT p.phone, p.name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.patient_id
+        WHERE a.id = %s
+    """, (appointment_id,))
+    patient = cur.fetchone()
+
+    # Update appointment (CORRECT)
+    cur.execute("""
+        UPDATE appointments
+        SET status = %s,
+            updated_at = NOW()
+        WHERE id = %s
+    """, (new_status, appointment_id))
+    conn.commit()
+
+    cur.close()
+
+
+    flash(f"Appointment {new_status}. Patient notified.", "success")
+    return redirect(url_for("doctor_dashboard"))
+# ---------------- DOCTOR DASHBOARD ----------------
+@app.route("/doctor")
+def doctor_dashboard():
+    if "doctor_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    doctor_id = session["doctor_id"]
+    doctor_name = session.get("doctor_name", "Specialist")
+
+    # 1. Fetch Pending Appointments
+    cursor.execute("""
+        SELECT a.id, a.date, p.name AS patient_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.patient_id
+        WHERE a.doctor_id = %s AND LOWER(a.status) = 'pending'
         ORDER BY a.date ASC
     """, (doctor_id,))
     appointments = cursor.fetchall()
 
-    return render_template('doctor.html',
-                           doctor_name=session['doctor_name'],
-                           patients=patients,
-                           patient_logs=patient_logs,
-                           ai_summaries=ai_summaries,
-                           appointments=appointments)
+    # 2. Fetch Assigned Patients
+    cursor.execute("SELECT patient_id, name, email FROM patients WHERE doctor_id = %s", (doctor_id,))
+    patients = cursor.fetchall()
+
+    patient_logs = {}
+    ai_summaries = {}
+
+    # 3. Process Trends & Expert Advice
+    for p in patients:
+        p_id = p["patient_id"]
+        
+        # Get last 5 logs for historical context
+        cursor.execute("""
+            SELECT date, symptoms, medication 
+            FROM health_logs
+            WHERE patient_id = %s 
+            ORDER BY date DESC LIMIT 5
+        """, (p_id,))
+        logs = cursor.fetchall()
+        patient_logs[p_id] = logs
+
+        if logs:
+            # Build a history string for the AI Nephrologist persona
+            history_str = " | ".join([f"{l['date']}: {l['symptoms']}" for l in logs])
+            
+            prompt = (
+                f"As a Senior Nephrologist, analyze these 5 logs: {history_str}. "
+                "Provide concrete clinical advice (not a summary) under 160 characters. "
+                "Specify the most urgent action or monitoring requirement for this patient."
+            )
+            
+            try:
+                raw_advice = analyze_patient_logs(prompt)
+                # Strip AI chatter to save space
+                clean_advice = raw_advice.replace("Advice:", "").replace("Clinical Advice:", "").strip()
+                ai_summaries[p_id] = (clean_advice[:157] + '..') if len(clean_advice) > 160 else clean_advice
+            except Exception as e:
+                print(f"AI Error: {e}")
+                ai_summaries[p_id] = "AI analysis unavailable. Review logs manually."
+        else:
+            ai_summaries[p_id] = "No patient history found. Monitoring cannot be established."
+
+    return render_template(
+        "doctor.html",
+        doctor_name=doctor_name,
+        appointments=appointments,
+        patients=patients,
+        patient_logs=patient_logs,
+        ai_summaries=ai_summaries
+    )
+
+# ---------------- LOG HEALTH ----------------
+@app.route("/log", methods=["POST"])
+def log():
+    if "patient_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        INSERT INTO health_logs (patient_id, symptoms, medication)
+        VALUES (%s, %s, %s)
+    """, (session["patient_id"], request.form["symptoms"], request.form["medication"]))
+    conn.commit()
+    return redirect("/patient")
 
 
-@app.route("/ai_suggest/<int:patient_id>")
-def ai_suggest(patient_id):
-    """Return a longer AI suggestion for the doctor (via modal in doctor.html)."""
-    cursor.execute("""SELECT date, symptoms, medication 
-                      FROM health_logs 
-                      WHERE patient_id = %s 
-                      ORDER BY date DESC LIMIT 5""", (patient_id,))
-    logs = cursor.fetchall()
+@app.route("/book", methods=["GET", "POST"])
+def book_appointment():
+    if "patient_id" not in session:
+        flash("Please login first.", "danger")
+        return redirect(url_for("login"))
 
-    if logs:
-        logs_text = "\n".join([f"{log['date']}: {log['symptoms']} (med: {log['medication']})" for log in logs])
-        suggestion = analyze_patient_logs(
-            f"Recent logs:\n{logs_text}\nProvide clinical decision support suggestions in 3-4 sentences."
-        )
-    else:
-        suggestion = "No recent logs. Recommend scheduling a follow-up."
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
 
-    return jsonify({"suggestion": suggestion})
+    cursor.execute("SELECT doctor_id FROM patients WHERE patient_id=%s", (session['patient_id'],))
+    res = cursor.fetchone()
+
+    if not res or not res['doctor_id']:
+        flash("No doctor assigned yet. Please wait.", "warning")
+        return redirect(url_for("patient"))
+
+    if request.method == "POST":
+        date_time = f"{request.form['date']} {request.form['time']}:00"
+        cursor.execute("""
+            INSERT INTO appointments (patient_id, doctor_id, date, status)
+            VALUES (%s, %s, %s, 'pending')
+        """, (session['patient_id'], res['doctor_id'], date_time))
+        conn.commit()
+        flash("Appointment requested successfully.", "success")
+        return redirect(url_for("patient"))
+
+    return render_template("book.html")
+
+@app.route('/labs')
+def labs_page():
+    if 'patient_id' not in session:
+        flash("Session expired. Please login again.", "danger")
+        return redirect(url_for('login'))
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT * FROM lab_results 
+        WHERE patient_id=%s 
+        ORDER BY date DESC
+    """, (session['patient_id'],))
+    
+    results = cursor.fetchall() or []
+    return render_template('labs.html', labs=results)
+
+@app.route('/contact')
+def contact_page():
+    if 'patient_id' not in session:
+        flash("Session expired. Please login again.", "danger")
+        return redirect(url_for('login'))
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT * FROM doctors")
+    docs = cursor.fetchall() or []
+    return render_template('contact.html', doctors=docs)
+
 
 
 @app.route("/recommend/<int:patient_id>", methods=["GET", "POST"])
@@ -309,211 +496,22 @@ def recommend(patient_id):
     if "doctor_id" not in session:
         return redirect("/login")
 
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
     if request.method == "POST":
         advice = request.form["advice"]
-        cursor.execute("INSERT INTO recommendations (patient_id, doctor_id, advice) VALUES (%s, %s, %s)",
-                       (patient_id, session["doctor_id"], advice))
+        cursor.execute("""
+            INSERT INTO recommendations (patient_id, doctor_id, advice, date)
+            VALUES (%s, %s, %s, NOW())
+        """, (patient_id, session["doctor_id"], advice))
         conn.commit()
-        flash("Recommendation saved successfully!")
-        return redirect("/doctor")
+        flash("Recommendation sent successfully!", "success")
+        return redirect(url_for("doctor_dashboard"))
 
-    cursor.execute("SELECT * FROM patients WHERE patient_id = %s", (patient_id,))
+    cursor.execute("SELECT * FROM patients WHERE patient_id=%s", (patient_id,))
     patient = cursor.fetchone()
-
-    cursor.execute("SELECT * FROM health_logs WHERE patient_id = %s ORDER BY date DESC LIMIT 5", (patient_id,))
-    logs = cursor.fetchall()
-
-    return render_template("recomendation.html", patient=patient, logs=logs)
-
-from flask import flash, redirect, url_for
-
-@app.route("/appointment/<int:appointment_id>/<action>", methods=["POST", "GET"])
-def update_appointment(appointment_id, action):
-    if "doctor_id" not in session:
-        return redirect("/login")
-
-    try:
-        # use a fresh cursor for each DB operation
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT patient_id FROM appointments WHERE id=%s", (appointment_id,))
-        appt = cur.fetchone()
-        cur.close()
-
-        if not appt:
-            flash("Appointment not found ❌", "danger")
-            return redirect(url_for("doctor_dashboard"))
-
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT phone, name FROM patients WHERE patient_id=%s", (appt["patient_id"],))
-        patient = cur.fetchone()
-        cur.close()
-
-        if not patient or not patient.get("phone"):
-            flash("Patient phone not found ❌", "danger")
-            return redirect(url_for("doctor_dashboard"))
-
-        if action not in ("accept", "reject"):
-            flash("Invalid action ❌", "warning")
-            return redirect(url_for("doctor_dashboard"))
-
-        new_status = "accepted" if action == "accept" else "rejected"
-        sms_message = f"Hello {patient.get('name','')}, your appointment has been {new_status.upper()} {'✅' if action=='accept' else '❌'}"
-
-      
-        cur = conn.cursor()
-        cur.execute("UPDATE appointments SET status=%s WHERE id=%s", (new_status, appointment_id))
-        conn.commit()
-        cur.close()
-
-
-        try:
-            send_sms(patient["phone"], sms_message)
-        except Exception as e:
-            app.logger.exception("SMS sending failed (but appointment already updated)")
-
-        flash(f"Appointment {new_status}. Patient notified (if SMS succeeded).", "success" if action=="accept" else "danger")
-
-        
-        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"message": f"Appointment {new_status}", "status": "ok"})
-
-        return redirect(url_for("doctor_dashboard"))
-
-    except Exception as e:
-        app.logger.exception("Error updating appointment")
-        flash("Error updating appointment. See server log for details.", "danger")
-        return redirect(url_for("doctor_dashboard"))
-
-
-@app.route("/appointments/accept/<int:app_id>")
-def accept_appointment(app_id):
-   
-    cursor.execute("UPDATE appointments SET status='accepted' WHERE id=%s", (app_id,))
-    conn.commit()
-
-    # Fetch patient info
-    cursor.execute("""
-        SELECT p.phone, p.name, a.date 
-        FROM appointments a 
-        JOIN patients p ON a.patient_id = p.patient_id 
-        WHERE a.id=%s
-    """, (app_id,))
-    appointment = cursor.fetchone()
-
-    if appointment and appointment["phone"]:
-        msg = f"Hello {appointment['name']}, your appointment on {appointment['date']} has been ACCEPTED ✅."
-        send_sms(appointment["phone"], msg)
-
-    flash("✅ Appointment accepted. Patient notified via SMS.")
-    return redirect(url_for("doctor_dashboard"))
-
-
-
-@app.route("/appointments/reject/<int:app_id>")
-def reject_appointment(app_id):
-    cursor.execute("UPDATE appointments SET status='rejected' WHERE id=%s", (app_id,))
-    conn.commit()
-
-    cursor.execute("""
-        SELECT p.phone, p.name, a.date 
-        FROM appointments a 
-        JOIN patients p ON a.patient_id = p.patient_id 
-        WHERE a.id=%s
-    """, (app_id,))
-    appointment = cursor.fetchone()
-
-    if appointment and appointment["phone"]:
-        message = f"Hello {appointment['name']}, your appointment on {appointment['date']} has been REJECTED ❌. Please reschedule."
-        send_sms(appointment["phone"], message)
-
-    flash("❌ Appointment rejected. Patient notified via SMS.")
-    return redirect(url_for("doctor_dashboard"))
-
-
-
-
-
-@app.route("/book", methods=["GET", "POST"])
-def book_appointment():
-    if "patient_id" not in session:
-        return redirect("/login")
-
-    cursor.execute("SELECT doctor_id FROM patients WHERE patient_id = %s", (session["patient_id"],))
-    assigned = cursor.fetchone()
-    if not assigned or not assigned["doctor_id"]:
-        flash("No doctor assigned yet. Please contact admin.")
-        return redirect("/patient")
-
-    doctor_id = assigned["doctor_id"]
-
-    if request.method == "POST":
-        date = request.form["date"]
-        time = request.form["time"]
-        cursor.execute("INSERT INTO appointments (patient_id, doctor_id, date, time, status) VALUES (%s, %s, %s, %s, 'pending')",
-                       (session["patient_id"], doctor_id, date, time))
-        conn.commit()
-        flash("Appointment booked successfully with your assigned doctor!")
-        return redirect("/patient")
-
-    cursor.execute("SELECT name, specialization FROM doctors WHERE doctor_id = %s", (doctor_id,))
-    doctor = cursor.fetchone()
-    return render_template("book.html", doctor=doctor)
-
-
-@app.route("/contact")
-def contact():
-    cursor.execute("SELECT doctor_id, name, specialization, phone, email FROM doctors")
-    doctors = cursor.fetchall()
-
-    cursor.execute("SELECT nurse_id, name, specialization, phone, email FROM nurses")
-    nurses = cursor.fetchall()
-
-    return render_template("contact.html", doctors=doctors, nurses=nurses)
-
-
-@app.route('/message_care_team', methods=['POST'])
-def message_care_team():
-    if 'patient_id' not in session:
-        return redirect('/login')
-
-    cursor.execute("INSERT INTO messages (patient_id, recipient_id, subject, body) VALUES (%s, %s, %s, %s)",
-                   (session['patient_id'], request.form['recipient_id'],
-                    request.form['subject'], request.form['message']))
-    conn.commit()
-    flash('Message sent securely to your care team.')
-    return redirect('/contact')
-
-
-@app.route('/labs')
-def labs_page():
-    if 'patient_id' not in session:
-        return redirect('/login')
-
-    # Get patient profile (age, gender, vitals)
-    cur1 = conn.cursor(dictionary=True, buffered=True)
-    cur1.execute("""
-        SELECT name, age, gender, blood_sugar, blood_pressure, weight, urine_output
-        FROM patients 
-        WHERE patient_id = %s
-    """, (session['patient_id'],))
-    patient = cur1.fetchone()
-    cur1.close()
-
-    # Get lab results
-    cur2 = conn.cursor(dictionary=True, buffered=True)
-    cur2.execute("""
-        SELECT id, DATE_FORMAT(date, '%%Y-%%m-%%d') AS date, test_name, value, unit,
-               reference_range, status, clinician_notes
-        FROM lab_results
-        WHERE patient_id = %s
-        ORDER BY date DESC, id DESC
-    """, (session['patient_id'],))
-    labs = cur2.fetchall() or []
-    cur2.close()
-
-    unique_tests = sorted({row['test_name'] for row in labs})
-    return render_template('labs.html', patient=patient, labs=labs, unique_tests=unique_tests)
-
+    return render_template("recommendation.html", patient=patient)
 
 
 
@@ -534,6 +532,8 @@ def admin_dashboard():
 def manage_patients():
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM patients")
     patients = cursor.fetchall()
     return render_template("manage_patients.html", patients=patients)
@@ -543,6 +543,8 @@ def manage_patients():
 def add_patient():
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     name = request.form["name"]
     email = request.form["email"]
     password = request.form["password"]
@@ -555,6 +557,8 @@ def add_patient():
 def delete_patient(id):
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("DELETE FROM patients WHERE patient_id = %s", (id,))
     conn.commit()
     return redirect(url_for("manage_patients"))
@@ -565,6 +569,8 @@ def delete_patient(id):
 def manage_doctors():
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM doctors")
     doctors = cursor.fetchall()
     return render_template("manage_doctors.html", doctors=doctors)
@@ -574,6 +580,8 @@ def manage_doctors():
 def add_doctor():
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     name = request.form["name"]
     email = request.form["email"]
     password = request.form["password"]
@@ -588,6 +596,8 @@ def add_doctor():
 def delete_doctor(id):
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("DELETE FROM doctors WHERE doctor_id = %s", (id,))
     conn.commit()
     return redirect(url_for("manage_doctors"))
@@ -598,6 +608,8 @@ def delete_doctor(id):
 def manage_caregivers():
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM caregivers")
     caregivers = cursor.fetchall()
     return render_template("manage_caregivers.html", caregivers=caregivers)
@@ -607,6 +619,8 @@ def manage_caregivers():
 def add_caregiver():
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     name = request.form["name"]
     email = request.form["email"]
     password = request.form["password"]
@@ -619,18 +633,21 @@ def add_caregiver():
 def delete_caregiver(id):
     if "admin_id" not in session:
         return redirect("/login")
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("DELETE FROM caregivers WHERE caregiver_id = %s", (id,))
     conn.commit()
     return redirect(url_for("manage_caregivers"))
 
 
 
-@app.route('/logout')
+
+# ---------------- LOGOUT ----------------
+@app.route("/logout")
 def logout():
     session.clear()
-    return redirect('/login')
+    return redirect("/login")
 
-
-# -------------------- MAIN --------------------
-if __name__ == '__main__':
+# ---------------- RUN ----------------
+if __name__ == "__main__":
     app.run(debug=True)
