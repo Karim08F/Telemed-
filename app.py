@@ -133,6 +133,7 @@ def home():
 def login():
     conn = get_db()
     if conn is None:
+        print("DEBUG: Login failed because get_db() returned None")
         flash("Database connection failed. Please try again later.", "danger")
         return render_template("login.html")
     
@@ -141,22 +142,41 @@ def login():
         role = request.form["role"]
         email = request.form["email"]
         password = request.form["password"]
+        
+        print(f"DEBUG: Login attempt - Role: {role}, Email: {email}")
 
         if role == "patient":
             cursor.execute("SELECT * FROM patients WHERE email=%s AND password=%s", (email, password))
             user = cursor.fetchone()
             if user:
+                print(f"DEBUG: Patient login SUCCESS for {email}")
                 session["patient_id"] = user["patient_id"]
                 session["patient_name"] = user["name"]
                 return redirect("/patient")
+            else:
+                print(f"DEBUG: Patient login FAILED - user not found or password mismatch")
 
         if role == "doctor":
             cursor.execute("SELECT * FROM doctors WHERE email=%s AND password=%s", (email, password))
             doc = cursor.fetchone()
             if doc:
+                print(f"DEBUG: Doctor login SUCCESS for {email}")
                 session["doctor_id"] = doc["doctor_id"]
                 session["doctor_name"] = doc["name"]
                 return redirect("/doctor")
+            else:
+                print(f"DEBUG: Doctor login FAILED - doctor not found or password mismatch")
+
+        if role == "admin":
+            cursor.execute("SELECT * FROM admins WHERE email=%s AND password=%s", (email, password))
+            adm = cursor.fetchone()
+            if adm:
+                print(f"DEBUG: Admin login SUCCESS for {email}")
+                session["admin_id"] = adm["admin_id"]
+                session["admin_name"] = adm["name"]
+                return redirect("/admin/dashboard")
+            else:
+                print(f"DEBUG: Admin login FAILED - admin not found or password mismatch")
 
         flash("Invalid login credentials", "danger")
     return render_template("login.html")
