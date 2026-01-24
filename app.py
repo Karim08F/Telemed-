@@ -41,20 +41,20 @@ def get_db():
                 database = os.getenv("MYSQLDATABASE") or os.getenv("MYSQL_DATABASE")
                 port = os.getenv("MYSQLPORT") or os.getenv("MYSQL_PORT")
 
-                # 3. Fallback Logic
+                # 3. Fallback Logic (The "Localhost" Trap Fix)
                 # If we are on Railway, MYSQLHOST will usually be set. 
-                # If host is "localhost", it's likely being loaded from a local .env file.
+                # If it's missing or set to "localhost", use the public proxy credentials.
                 if not host or host == "localhost":
-                    print("DEBUG: No Railway host found (or localhost detected). Using fallback/local config.")
-                    host = os.getenv("DB_HOST", "ballast.proxy.rlwy.net")
-                    user = os.getenv("DB_USER", "root")
-                    password = os.getenv("DB_PASSWORD", "FpLCHBsckikkzneiEOHlQAEakEHIaECS")
-                    database = os.getenv("DB_NAME", "railway")
-                    port = os.getenv("DB_PORT", "33613")
+                    print("DEBUG: Railway HOST missing or is 'localhost'. FORCING Proxy fallback.")
+                    host = "ballast.proxy.rlwy.net"
+                    user = "root"
+                    password = "FpLCHBsckikkzneiEOHlQAEakEHIaECS"
+                    database = "railway"
+                    port = "33613"
                 
                 port = int(port) if port else 3306
                 
-                print(f"DEBUG: Connecting via vars (Host: {host}, Port: {port}, User: {user})")
+                print(f"DEBUG: FINAL CONNECTION ATTEMPT -> Host: {host}, Port: {port}, User: {user}")
                 
                 g.db = mysql.connector.connect(
                     host=host,
