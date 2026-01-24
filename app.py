@@ -1,31 +1,15 @@
-from flask import Flask, render_template, request, redirect, session, flash, url_for, g
-import mysql.connector
-import os
-from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from google import genai
-from google.genai import types
-
-# load_dotenv() - Moved to the bottom to avoid overriding Railway env vars
+load_dotenv()
 
 # ---------------- DB CONNECTION ----------------
 def get_db():
     if 'db' not in g:
         try:
-            # Version Check: 1.0.2 (Full Env Debug)
-            print(">>> TELEMED DB CONNECT ATTEMPT v1.0.2 <<<")
-            # List all env vars starting with MYSQL or DB to see what's available
-            env_vars = {k: v for k, v in os.environ.items() if k.startswith("MYSQL") or k.startswith("DB")}
-            print(f"DEBUG FULL ENV: {env_vars}")
-            
-            # 1. Try Railway's auto-generated DATABASE_URL or MYSQL_URL
+            # Prefer Railway environment variables if they exist
             database_url = os.getenv("DATABASE_URL") or os.getenv("MYSQL_URL")
             
             if database_url and database_url.startswith("mysql://"):
                 from urllib.parse import urlparse
                 parsed = urlparse(database_url)
-                print(f"DEBUG: Connecting via URL (Host: {parsed.hostname}, Port: {parsed.port or 3306})")
-                
                 g.db = mysql.connector.connect(
                     host=parsed.hostname,
                     user=parsed.username,
@@ -34,28 +18,12 @@ def get_db():
                     port=parsed.port or 3306
                 )
             else:
-                # 2. Try individual Railway vars (preferred for visibility)
-                # Handle variations like MYSQLHOST vs MYSQL_HOST, MYSQLDATABASE vs MYSQL_DATABASE
-                host = os.getenv("MYSQLHOST") or os.getenv("MYSQL_HOST")
-                user = os.getenv("MYSQLUSER") or os.getenv("MYSQL_USER")
-                password = os.getenv("MYSQLPASSWORD") or os.getenv("MYSQL_PASSWORD")
-                database = os.getenv("MYSQLDATABASE") or os.getenv("MYSQL_DATABASE")
-                port = os.getenv("MYSQLPORT") or os.getenv("MYSQL_PORT")
-
-                # 3. Fallback Logic (The "Localhost" Trap Fix)
-                # If we are on Railway, MYSQLHOST will usually be set. 
-                # If it's missing or set to "localhost", use the public proxy credentials.
-                if not host or host == "localhost":
-                    print("DEBUG: Railway HOST missing or is 'localhost'. FORCING Proxy fallback.")
-                    host = "ballast.proxy.rlwy.net"
-                    user = "root"
-                    password = "FpLCHBsckikkzneiEOHlQAEakEHIaECS"
-                    database = "railway"
-                    port = "33613"
-                
-                port = int(port) if port else 3306
-                
-                print(f"DEBUG: FINAL CONNECTION ATTEMPT -> Host: {host}, Port: {port}, User: {user}")
+                # Fallback to individual variables (Supports local port-forwarding via .env)
+                host = os.getenv("MYSQLHOST") or os.getenv("DB_HOST", "localhost")
+                user = os.getenv("MYSQLUSER") or os.getenv("DB_USER", "root")
+                password = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD", "")
+                database = os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME", "telemed_system")
+                port = int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT", "3306"))
                 
                 g.db = mysql.connector.connect(
                     host=host,
@@ -65,11 +33,7 @@ def get_db():
                     port=port
                 )
         except mysql.connector.Error as err:
-            if err.errno == 2003:
-                print(f"Database Connection Error (2003): Connection Refused to '{host}:{port}'. "
-                      "Check if MYSQLHOST, MYSQLPORT, etc. are set correctly in Railway.")
-            else:
-                print(f"Database Connection Error: {err}")
+            print(f"Database Connection Error: {err}")
             return None
         except Exception as e:
             print(f"Unexpected Database Error: {e}")
@@ -134,7 +98,6 @@ def home():
 def login():
     conn = get_db()
     if conn is None:
-        print("DEBUG: Login failed because get_db() returned None")
         flash("Database connection failed. Please try again later.", "danger")
         return render_template("login.html")
     
@@ -143,41 +106,30 @@ def login():
         role = request.form["role"]
         email = request.form["email"]
         password = request.form["password"]
-        
-        print(f"DEBUG: Login attempt - Role: {role}, Email: {email}")
 
         if role == "patient":
             cursor.execute("SELECT * FROM patients WHERE email=%s AND password=%s", (email, password))
             user = cursor.fetchone()
             if user:
-                print(f"DEBUG: Patient login SUCCESS for {email}")
                 session["patient_id"] = user["patient_id"]
                 session["patient_name"] = user["name"]
                 return redirect("/patient")
-            else:
-                print(f"DEBUG: Patient login FAILED - user not found or password mismatch")
 
         if role == "doctor":
             cursor.execute("SELECT * FROM doctors WHERE email=%s AND password=%s", (email, password))
             doc = cursor.fetchone()
             if doc:
-                print(f"DEBUG: Doctor login SUCCESS for {email}")
                 session["doctor_id"] = doc["doctor_id"]
                 session["doctor_name"] = doc["name"]
                 return redirect("/doctor")
-            else:
-                print(f"DEBUG: Doctor login FAILED - doctor not found or password mismatch")
 
         if role == "admin":
             cursor.execute("SELECT * FROM admins WHERE email=%s AND password=%s", (email, password))
             adm = cursor.fetchone()
             if adm:
-                print(f"DEBUG: Admin login SUCCESS for {email}")
                 session["admin_id"] = adm["admin_id"]
                 session["admin_name"] = adm["name"]
                 return redirect("/admin/dashboard")
-            else:
-                print(f"DEBUG: Admin login FAILED - admin not found or password mismatch")
 
         flash("Invalid login credentials", "danger")
     return render_template("login.html")
@@ -725,5 +677,4 @@ def logout():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    load_dotenv() # Only load .env if running locally
     app.run(debug=True)
