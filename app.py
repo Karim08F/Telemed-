@@ -15,14 +15,13 @@ load_dotenv()
 def get_db():
     if 'db' not in g:
         try:
-            # Try to parse DATABASE_URL first (Railway MySQL format)
+            # 1. Try Railway's auto-generated DATABASE_URL or MYSQL_URL
             database_url = os.getenv("DATABASE_URL") or os.getenv("MYSQL_URL")
             
             if database_url and database_url.startswith("mysql://"):
-                # Parse mysql://user:password@host:port/database
                 from urllib.parse import urlparse
                 parsed = urlparse(database_url)
-                print(f"DEBUG: Connecting via DATABASE_URL to host: {parsed.hostname}")
+                print(f"DEBUG: Connecting via URL (Host: {parsed.hostname}, Port: {parsed.port or 3306})")
                 
                 g.db = mysql.connector.connect(
                     host=parsed.hostname,
@@ -32,14 +31,24 @@ def get_db():
                     port=parsed.port or 3306
                 )
             else:
-                # Fallback to individual environment variables
-                host = os.getenv("MYSQLHOST") or os.getenv("DB_HOST", "localhost")
-                user = os.getenv("MYSQLUSER") or os.getenv("DB_USER", "root")
-                password = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD", "")
-                database = os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME", "telemed_system")
-                port = int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT", "3306"))
+                # 2. Try individual Railway vars (preferred for visibility)
+                host = os.getenv("MYSQLHOST")
+                user = os.getenv("MYSQLUSER")
+                password = os.getenv("MYSQLPASSWORD")
+                database = os.getenv("MYSQLDATABASE")
+                port = os.getenv("MYSQLPORT")
+
+                # 3. Fallback to confirmed Railway credentials (Workbench)
+                if not host:
+                    host = os.getenv("DB_HOST", "ballast.proxy.rlwy.net")
+                    user = os.getenv("DB_USER", "root")
+                    password = os.getenv("DB_PASSWORD", "FpLCHBsckikkzneiEOHlQAEakEHIaECS")
+                    database = os.getenv("DB_NAME", "railway")
+                    port = os.getenv("DB_PORT", "33613")
                 
-                print(f"DEBUG: Connecting via individual vars to host: {host}")
+                port = int(port) if port else 3306
+                
+                print(f"DEBUG: Connecting via vars (Host: {host}, Port: {port}, User: {user})")
                 
                 g.db = mysql.connector.connect(
                     host=host,
@@ -49,10 +58,14 @@ def get_db():
                     port=port
                 )
         except mysql.connector.Error as err:
-            print(f"Database Connection Error: {err}")
+            if err.errno == 2003:
+                print(f"Database Connection Error (2003): Connection Refused to '{host}:{port}'. "
+                      "Check if MYSQLHOST, MYSQLPORT, etc. are set correctly in Railway.")
+            else:
+                print(f"Database Connection Error: {err}")
             return None
         except Exception as e:
-            print(f"Unexpected Error: {e}")
+            print(f"Unexpected Database Error: {e}")
             return None
     return g.db
 
