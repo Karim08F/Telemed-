@@ -6,15 +6,17 @@ from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
 
-load_dotenv()
+# load_dotenv() - Moved to the bottom to avoid overriding Railway env vars
 
-# ---------------- DB CONNECTION ----------------
-# ---------------- DB CONNECTION ----------------
-# ---------------- DB CONNECTION ----------------
 # ---------------- DB CONNECTION ----------------
 def get_db():
     if 'db' not in g:
         try:
+            # Version Check: 1.0.1 (New Diagnostics)
+            print(">>> TELEMED DB CONNECT ATTEMPT v1.0.1 <<<")
+            # Debug print to see what variables Railway is providing
+            print(f"DEBUG ENV: MYSQLHOST={os.getenv('MYSQLHOST')}, MYSQL_HOST={os.getenv('MYSQL_HOST')}, DB_HOST={os.getenv('DB_HOST')}")
+            
             # 1. Try Railway's auto-generated DATABASE_URL or MYSQL_URL
             database_url = os.getenv("DATABASE_URL") or os.getenv("MYSQL_URL")
             
@@ -32,14 +34,18 @@ def get_db():
                 )
             else:
                 # 2. Try individual Railway vars (preferred for visibility)
-                host = os.getenv("MYSQLHOST")
-                user = os.getenv("MYSQLUSER")
-                password = os.getenv("MYSQLPASSWORD")
-                database = os.getenv("MYSQLDATABASE")
-                port = os.getenv("MYSQLPORT")
+                # Handle variations like MYSQLHOST vs MYSQL_HOST, MYSQLDATABASE vs MYSQL_DATABASE
+                host = os.getenv("MYSQLHOST") or os.getenv("MYSQL_HOST")
+                user = os.getenv("MYSQLUSER") or os.getenv("MYSQL_USER")
+                password = os.getenv("MYSQLPASSWORD") or os.getenv("MYSQL_PASSWORD")
+                database = os.getenv("MYSQLDATABASE") or os.getenv("MYSQL_DATABASE")
+                port = os.getenv("MYSQLPORT") or os.getenv("MYSQL_PORT")
 
-                # 3. Fallback to confirmed Railway credentials (Workbench)
-                if not host:
+                # 3. Fallback Logic
+                # If we are on Railway, MYSQLHOST will usually be set. 
+                # If host is "localhost", it's likely being loaded from a local .env file.
+                if not host or host == "localhost":
+                    print("DEBUG: No Railway host found (or localhost detected). Using fallback/local config.")
                     host = os.getenv("DB_HOST", "ballast.proxy.rlwy.net")
                     user = os.getenv("DB_USER", "root")
                     password = os.getenv("DB_PASSWORD", "FpLCHBsckikkzneiEOHlQAEakEHIaECS")
@@ -698,4 +704,5 @@ def logout():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
+    load_dotenv() # Only load .env if running locally
     app.run(debug=True)
