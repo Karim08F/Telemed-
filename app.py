@@ -12,10 +12,11 @@ from google.genai import types
 def get_db():
     if 'db' not in g:
         try:
-            # Version Check: 1.0.1 (New Diagnostics)
-            print(">>> TELEMED DB CONNECT ATTEMPT v1.0.1 <<<")
-            # Debug print to see what variables Railway is providing
-            print(f"DEBUG ENV: MYSQLHOST={os.getenv('MYSQLHOST')}, MYSQL_HOST={os.getenv('MYSQL_HOST')}, DB_HOST={os.getenv('DB_HOST')}")
+            # Version Check: 1.0.2 (Full Env Debug)
+            print(">>> TELEMED DB CONNECT ATTEMPT v1.0.2 <<<")
+            # List all env vars starting with MYSQL or DB to see what's available
+            env_vars = {k: v for k, v in os.environ.items() if k.startswith("MYSQL") or k.startswith("DB")}
+            print(f"DEBUG FULL ENV: {env_vars}")
             
             # 1. Try Railway's auto-generated DATABASE_URL or MYSQL_URL
             database_url = os.getenv("DATABASE_URL") or os.getenv("MYSQL_URL")
