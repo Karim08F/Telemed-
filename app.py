@@ -13,15 +13,36 @@ load_dotenv()
 def get_db():
     if 'db' not in g:
         try:
-            g.db = mysql.connector.connect(
-                host=os.getenv("DB_HOST", "localhost"),
-                user=os.getenv("DB_USER", "root"),
-                password=os.getenv("DB_PASSWORD", ""),
-                database=os.getenv("DB_NAME", "telemed_system"),
-                port=int(os.getenv("DB_PORT", 3306))
-            )
+            # Try to parse DATABASE_URL first (Railway MySQL format)
+            database_url = os.getenv("DATABASE_URL")
+            
+            if database_url and database_url.startswith("mysql://"):
+                # Parse mysql://user:password@host:port/database
+                from urllib.parse import urlparse
+                parsed = urlparse(database_url)
+                
+                g.db = mysql.connector.connect(
+                    host=parsed.hostname,
+                    user=parsed.username,
+                    password=parsed.password,
+                    database=parsed.path.lstrip('/'),
+                    port=parsed.port or 3306
+                )
+            else:
+                # Fallback to individual environment variables
+                # Support Railway's MYSQL_* variables or custom DB_* variables
+                g.db = mysql.connector.connect(
+                    host=os.getenv("MYSQLHOST") or os.getenv("DB_HOST", "localhost"),
+                    user=os.getenv("MYSQLUSER") or os.getenv("DB_USER", "root"),
+                    password=os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD", ""),
+                    database=os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME", "telemed_system"),
+                    port=int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT", "3306"))
+                )
         except mysql.connector.Error as err:
-            print(f"Error: {err}")
+            print(f"Database Connection Error: {err}")
+            return None
+        except Exception as e:
+            print(f"Unexpected Error: {e}")
             return None
     return g.db
 
@@ -82,6 +103,10 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     conn = get_db()
+    if conn is None:
+        flash("Database connection failed. Please try again later.", "danger")
+        return render_template("login.html")
+    
     cursor = conn.cursor(dictionary=True)
     if request.method == "POST":
         role = request.form["role"]
