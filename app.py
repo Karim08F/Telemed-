@@ -1,3 +1,11 @@
+from flask import Flask, render_template, request, redirect, session, flash, url_for, g
+import mysql.connector
+import os
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
+from google import genai
+from google.genai import types
+
 load_dotenv()
 
 # ---------------- DB CONNECTION ----------------
