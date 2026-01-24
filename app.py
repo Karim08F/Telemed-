@@ -10,16 +10,19 @@ load_dotenv()
 
 # ---------------- DB CONNECTION ----------------
 # ---------------- DB CONNECTION ----------------
+# ---------------- DB CONNECTION ----------------
+# ---------------- DB CONNECTION ----------------
 def get_db():
     if 'db' not in g:
         try:
             # Try to parse DATABASE_URL first (Railway MySQL format)
-            database_url = os.getenv("DATABASE_URL")
+            database_url = os.getenv("DATABASE_URL") or os.getenv("MYSQL_URL")
             
             if database_url and database_url.startswith("mysql://"):
                 # Parse mysql://user:password@host:port/database
                 from urllib.parse import urlparse
                 parsed = urlparse(database_url)
+                print(f"DEBUG: Connecting via DATABASE_URL to host: {parsed.hostname}")
                 
                 g.db = mysql.connector.connect(
                     host=parsed.hostname,
@@ -30,13 +33,20 @@ def get_db():
                 )
             else:
                 # Fallback to individual environment variables
-                # Support Railway's MYSQL_* variables or custom DB_* variables
+                host = os.getenv("MYSQLHOST") or os.getenv("DB_HOST", "localhost")
+                user = os.getenv("MYSQLUSER") or os.getenv("DB_USER", "root")
+                password = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD", "")
+                database = os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME", "telemed_system")
+                port = int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT", "3306"))
+                
+                print(f"DEBUG: Connecting via individual vars to host: {host}")
+                
                 g.db = mysql.connector.connect(
-                    host=os.getenv("MYSQLHOST") or os.getenv("DB_HOST", "localhost"),
-                    user=os.getenv("MYSQLUSER") or os.getenv("DB_USER", "root"),
-                    password=os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD", ""),
-                    database=os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME", "telemed_system"),
-                    port=int(os.getenv("MYSQLPORT") or os.getenv("DB_PORT", "3306"))
+                    host=host,
+                    user=user,
+                    password=password,
+                    database=database,
+                    port=port
                 )
         except mysql.connector.Error as err:
             print(f"Database Connection Error: {err}")
